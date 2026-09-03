@@ -1,0 +1,1 @@
+const mongoose=require('mongoose');const schema=new mongoose.Schema({fullName:{type:String,required:true,trim:true},email:{type:String,required:true,trim:true,lowercase:true},services:[String],projectDetails:{type:String,required:true,trim:true}},{timestamps:true});module.exports=mongoose.model('FormSubmission',schema);

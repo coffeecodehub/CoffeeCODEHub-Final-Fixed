@@ -1,0 +1,1 @@
+const mongoose=require('mongoose');module.exports=mongoose.model('Admin',new mongoose.Schema({name:String,email:{type:String,unique:true,index:true},passwordHash:String,role:{type:String,default:'admin'},isActive:{type:Boolean,default:true},lastLogin:Date},{timestamps:true}));

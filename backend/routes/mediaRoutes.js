@@ -1,0 +1,1 @@
+const r=require('express').Router(),auth=require('../middleware/auth'),upload=require('../middleware/upload'),c=require('../controllers/mediaController');r.post('/',auth,upload.single('file'),c.upload);module.exports=r;
