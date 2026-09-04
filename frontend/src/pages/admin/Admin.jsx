@@ -1,7 +1,7 @@
+import { api, apiBlob } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaXTwitter, FaGripVertical } from 'react-icons/fa6';
-import { api } from '../../lib/api';
 import { mediaUrl } from '../../lib/media';
 import {
   FiPlus, FiTrash2, FiX, FiLogOut, FiDownload, FiRefreshCw,
@@ -128,8 +128,206 @@ function SimpleCRUD({ type, endpoint, fields, editor = null }) {
 function Dashboard() { const [d, setD] = useState(null); const load = () => api('/dashboard').then(r => setD(r.data)).catch(() => null); useEffect(() => { api('/dashboard').then(r => setD(r.data)).catch(() => null); }, []); return <div><div className="flex items-start justify-between gap-4"><div><Back /><h1 className="mt-5 text-4xl font-black">Dashboard</h1><p className="text-slate-500 mt-2">A live overview of CoffeeCODEHub business activity.</p></div><button onClick={load} className="p-3 rounded-xl bg-white border" title="Refresh"><FiRefreshCw /></button></div><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-8">{[['Leads', d?.leads], ['Active Services', d?.services], ['Published Projects', d?.projects], ['Client Reviews', d?.reviews], ['Published Blogs', d?.blogs], ['Team Members', d?.team]].map(([k, v]) => <div key={k} className="bg-white border rounded-3xl p-6 shadow-sm"><p className="text-slate-500 text-sm">{k}</p><b className="text-4xl mt-3 block">{v ?? '—'}</b></div>)}</div></div>; }
 
 function Reviews() { const [items, , load] = useAdminData('/reviews/admin'); async function del(id) { if (window.confirm('Delete this review permanently?')) { await api(`/reviews/${id}`, { method: 'DELETE', headers: authHeaders() }); load(); } } return <div><Back /><h1 className="mt-5 text-4xl font-black">Client Reviews</h1><p className="text-slate-500 mt-2">Client feedback appears publicly as soon as it is submitted. You only need to delete a review if it is inappropriate or unwanted.</p><div className="mt-7 space-y-4">{items.map(r => <div key={r._id} className="bg-white border rounded-3xl p-6"><div className="flex justify-between gap-4"><div><b>{r.clientName}</b><p className="text-sm text-slate-500">{r.companyName || 'Client'} · <span className="text-[#F59E0B]">{'★'.repeat(r.rating)}</span></p></div><span className="text-xs uppercase font-black px-3 py-1 rounded-full bg-emerald-50 text-emerald-700">Published</span></div><p className="mt-4 text-slate-700 leading-7">{r.feedbackText}</p>{r.clientWebsiteUrl && <a href={r.clientWebsiteUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-[#b77900]">Client website <FiExternalLink /></a>}{r.projectLink && <a href={r.projectLink} target="_blank" rel="noreferrer" className="mt-3 ml-3 inline-flex items-center gap-1 text-sm font-bold text-[#b77900]">Project / work link <FiExternalLink /></a>}{r.proofScreenshots?.length > 0 && <div className="mt-5 flex gap-3">{r.proofScreenshots.map((u, i) => <a key={u} href={mediaUrl(u)} target="_blank" rel="noreferrer"><img src={mediaUrl(u)} alt={`Proof ${i + 1}`} className="w-28 h-20 object-cover rounded-xl border" /></a>)}</div>}<div className="mt-5"><button onClick={() => del(r._id)} className="px-4 py-2 rounded-xl border text-red-600 font-bold inline-flex items-center gap-2"><FiTrash2 /> Delete review</button></div></div>)}{!items.length && <div className="bg-white border rounded-3xl p-10 text-center text-slate-500">No reviews submitted yet.</div>}</div></div>; }
-function Leads() { const [items, , load] = useAdminData('/leads'); const [selected, setSelected] = useState(null); async function status(id, s) { await api(`/leads/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ status: s }) }); load(); } async function del(id) { if (window.confirm('Delete this lead permanently?')) { await api(`/leads/${id}`, { method: 'DELETE', headers: authHeaders() }); setSelected(null); load(); } } async function exportExcel() { const r = await fetch(`${(import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '')}/leads/export`, { headers: authHeaders() }); if (!r.ok) { window.alert('Export failed. Please sign in again.'); return; } const blob = await r.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `coffeecodehub-leads-${new Date().toISOString().slice(0, 10)}.xls`; a.click(); URL.revokeObjectURL(url); } return <div><div className="flex flex-wrap items-start justify-between gap-4"><div><Back /><h1 className="mt-5 text-4xl font-black">Leads Inbox</h1><p className="text-slate-500 mt-2">Every service request is retained until you choose to delete it.</p></div><button onClick={exportExcel} className="inline-flex items-center gap-2 bg-slate-950 text-white px-4 py-3 rounded-xl font-bold"><FiDownload /> Export Excel</button></div><div className="mt-7 space-y-4">{items.map(l => <div key={l._id} className="bg-white border rounded-3xl p-6"><div className="flex flex-wrap justify-between gap-4"><div><b>{l.clientName}</b><p className="text-sm text-slate-500">{l.email} · {l.phone || 'No phone'} · <span className="font-bold text-slate-700">{l.requestId}</span></p></div><div className="flex gap-2"><select value={l.status} onChange={e => status(l._id, e.target.value)} className="border rounded-xl px-3 py-2 text-sm font-bold">{['New', 'In Review', 'Contacted', 'In Discussion', 'Proposal Sent', 'Won', 'Closed', 'Rejected'].map(s => <option key={s}>{s}</option>)}</select><button onClick={() => setSelected(selected?._id === l._id ? null : l)} className="px-3 py-2 rounded-xl border font-bold">Details</button><button onClick={() => del(l._id)} className="p-2 rounded-xl border text-red-600"><FiTrash2 /></button></div></div><p className="mt-4"><b>Service:</b> {l.selectedService || 'Other / General inquiry'}</p>{selected?._id === l._id && <div className="mt-4 rounded-2xl bg-slate-50 border p-5"><p><b>Company:</b> {l.companyName || '—'}</p><p className="mt-2"><b>Budget:</b> {l.estimatedBudget || '—'} · <b>Timeline:</b> {l.timeline || '—'}</p><p className="mt-4 font-bold">Project details</p><p className="mt-1 text-slate-600 whitespace-pre-line">{l.projectScopeDetails}</p>{l.formData && Object.keys(l.formData).length > 0 && <><p className="mt-4 font-bold">Custom fields</p><pre className="mt-2 text-xs overflow-auto whitespace-pre-wrap bg-white p-3 rounded-xl border">{JSON.stringify(l.formData, null, 2)}</pre></>}<p className="mt-4 text-xs font-bold uppercase text-slate-400">Email notification: {l.emailStatus}</p></div>}</div>)}{!items.length && <div className="bg-white border rounded-3xl p-10 text-center text-slate-500">No service requests yet.</div>}</div></div>; }
+function Leads() {
+  const [items, , load] = useAdminData('/leads');
+  const [selected, setSelected] = useState(null);
 
+  async function status(id, s) {
+    await api(`/leads/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ status: s })
+    });
+
+    load();
+  }
+
+  async function del(id) {
+    if (window.confirm('Delete this lead permanently?')) {
+      await api(`/leads/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+      });
+
+      setSelected(null);
+      load();
+    }
+  }
+
+  async function exportExcel() {
+    try {
+      const blob = await apiBlob('/leads/export');
+
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `coffeecodehub-leads-${new Date()
+        .toISOString()
+        .slice(0, 10)}.xls`;
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+    } catch (e) {
+      window.alert(
+        e.message || 'Export failed. Please sign in again.'
+      );
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Back />
+
+          <h1 className="mt-5 text-4xl font-black">
+            Leads Inbox
+          </h1>
+
+          <p className="text-slate-500 mt-2">
+            Every service request is retained until you choose to delete it.
+          </p>
+        </div>
+
+        <button
+          onClick={exportExcel}
+          className="inline-flex items-center gap-2 bg-slate-950 text-white px-4 py-3 rounded-xl font-bold"
+        >
+          <FiDownload />
+          Export Excel
+        </button>
+      </div>
+
+      <div className="mt-7 space-y-4">
+        {items.map(l => (
+          <div
+            key={l._id}
+            className="bg-white border rounded-3xl p-6"
+          >
+            <div className="flex flex-wrap justify-between gap-4">
+              <div>
+                <b>{l.clientName}</b>
+
+                <p className="text-sm text-slate-500">
+                  {l.email} · {l.phone || 'No phone'} ·{' '}
+                  <span className="font-bold text-slate-700">
+                    {l.requestId}
+                  </span>
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <select
+                  value={l.status}
+                  onChange={e =>
+                    status(l._id, e.target.value)
+                  }
+                  className="border rounded-xl px-3 py-2 text-sm font-bold"
+                >
+                  {[
+                    'New',
+                    'In Review',
+                    'Contacted',
+                    'In Discussion',
+                    'Proposal Sent',
+                    'Won',
+                    'Closed',
+                    'Rejected'
+                  ].map(s => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() =>
+                    setSelected(
+                      selected?._id === l._id
+                        ? null
+                        : l
+                    )
+                  }
+                  className="px-3 py-2 rounded-xl border font-bold"
+                >
+                  Details
+                </button>
+
+                <button
+                  onClick={() => del(l._id)}
+                  className="p-2 rounded-xl border text-red-600"
+                >
+                  <FiTrash2 />
+                </button>
+              </div>
+            </div>
+
+            <p className="mt-4">
+              <b>Service:</b>{' '}
+              {l.selectedService ||
+                'Other / General inquiry'}
+            </p>
+
+            {selected?._id === l._id && (
+              <div className="mt-4 rounded-2xl bg-slate-50 border p-5">
+                <p>
+                  <b>Company:</b>{' '}
+                  {l.companyName || '—'}
+                </p>
+
+                <p className="mt-2">
+                  <b>Budget:</b>{' '}
+                  {l.estimatedBudget || '—'} ·{' '}
+                  <b>Timeline:</b>{' '}
+                  {l.timeline || '—'}
+                </p>
+
+                <p className="mt-4 font-bold">
+                  Project details
+                </p>
+
+                <p className="mt-1 text-slate-600 whitespace-pre-line">
+                  {l.projectScopeDetails}
+                </p>
+
+                {l.formData &&
+                  Object.keys(l.formData).length > 0 && (
+                    <>
+                      <p className="mt-4 font-bold">
+                        Custom fields
+                      </p>
+
+                      <pre className="mt-2 text-xs overflow-auto whitespace-pre-wrap bg-white p-3 rounded-xl border">
+                        {JSON.stringify(
+                          l.formData,
+                          null,
+                          2
+                        )}
+                      </pre>
+                    </>
+                  )}
+
+                <p className="mt-4 text-xs font-bold uppercase text-slate-400">
+                  Email notification: {l.emailStatus}
+                </p>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {!items.length && (
+          <div className="bg-white border rounded-3xl p-10 text-center text-slate-500">
+            No service requests yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 function Homepage() { const [data, setData] = useState({ hero: {}, stats: [], about: {}, process: [], whyUs: [], finalCta: {} }); const [msg, setMsg] = useState(''); useEffect(() => { api('/settings/homepage').then(r => setData(r.data || {})).catch(() => null); }, []); const u = (path, v) => setData(x => { const y = { ...x }; let ref = y; const parts = path.split('.'); parts.forEach((p, i) => { if (i === parts.length - 1) ref[p] = v; else { ref[p] = { ...(ref[p] || {}) }; ref = ref[p]; } }); return y; }); async function save(e) { e.preventDefault(); await api('/settings/homepage', { method: 'PUT', headers: authHeaders(), body: JSON.stringify(data) }); setMsg('Homepage saved.'); } return <div><Back /><h1 className="mt-5 text-4xl font-black">Homepage CMS</h1><p className="text-slate-500 mt-2">Edit homepage copy and hero media without touching code.</p><form onSubmit={save} className="mt-7 bg-white border rounded-3xl p-6 space-y-6"><div className="grid md:grid-cols-2 gap-5"><label className="md:col-span-2 text-sm font-bold">Hero title<textarea value={data.hero?.title || ''} onChange={e => u('hero.title', e.target.value)} placeholder="The main promise you want visitors to remember." rows="2" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Hero description<textarea value={data.hero?.description || ''} onChange={e => u('hero.description', e.target.value)} placeholder="Explain what CoffeeCODEHub builds and who it helps." rows="3" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Primary CTA<input value={data.hero?.primaryCta || ''} onChange={e => u('hero.primaryCta', e.target.value)} placeholder="Start Your Project" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Secondary CTA<input value={data.hero?.secondaryCta || ''} onChange={e => u('hero.secondaryCta', e.target.value)} placeholder="Explore Our Work" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">About heading<input value={data.about?.heading || ''} onChange={e => u('about.heading', e.target.value)} placeholder="Technology, design and growth under one roof." className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">About description<textarea value={data.about?.description || ''} onChange={e => u('about.description', e.target.value)} placeholder="Describe the company and its approach." rows="4" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><ImageUpload label="Homepage Hero Image" value={data.hero?.image || ''} onChange={v => u('hero.image', v)} folder="coffeecodehub/home" /><div className="md:col-span-2 rounded-2xl border bg-slate-50 p-5"><div className="flex items-center justify-between"><div><h3 className="font-black">Homepage Stats</h3><p className="text-xs text-slate-500">Add only truthful numbers or factual statements.</p></div><button type="button" onClick={() => u('stats', [...(data.stats || []), { label: '', value: '' }])} className="bg-[#F59E0B] px-3 py-2 rounded-xl text-sm font-black"><FiPlus /></button></div><div className="mt-4 space-y-3">{(data.stats || []).map((x, i) => <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2"><input value={x.label || ''} onChange={e => u(`stats.${i}.label`, e.target.value)} placeholder="Label e.g. Core Services" className="border rounded-xl px-3 py-2" /><input value={x.value || ''} onChange={e => u(`stats.${i}.value`, e.target.value)} placeholder="Value e.g. 8" className="border rounded-xl px-3 py-2" /><button type="button" onClick={() => u('stats', data.stats.filter((_, j) => j !== i))} className="text-red-500 px-2"><FiTrash2 /></button></div>)}</div></div></div><button className="bg-[#F59E0B] px-6 py-3 rounded-xl font-black">Save Homepage</button>{msg && <span className="ml-4 text-emerald-600 font-semibold">{msg}</span>}</form></div>; }
 
 const socialFields = [
