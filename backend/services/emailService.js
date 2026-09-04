@@ -2,8 +2,8 @@ const { Resend } = require('resend');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-// Official custom domain sender address
-const SENDER_EMAIL = process.env.RESEND_FROM || 'CoffeeCODEHub <info@coffeecodehub.com>';
+// Verified domain ke exact spelling ke mutabiq
+const SENDER_EMAIL = process.env.RESEND_FROM || 'CoffeeCODEHub <info@coffecodehub.com>';
 
 async function sendLeadEmail(lead) {
   if (!resend) {
