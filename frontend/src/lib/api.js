@@ -1,4 +1,6 @@
-const API = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+const RAW_API_URL = import.meta.env.VITE_API_URL || 'https://coffeecodehub-final-fixed-1.onrender.com';
+const BASE_URL = RAW_API_URL.replace(/\/+$/, ''); // trailing slash remove karega
+const API = BASE_URL.endsWith('/api') ? BASE_URL : `${BASE_URL}/api`;
 
 export async function api(path, options = {}) {
   const token = (() => {
@@ -11,8 +13,12 @@ export async function api(path, options = {}) {
   };
   if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
 
+  // Ensure path starts with a clean single slash
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const fullUrl = `${API}${cleanPath}`;
+
   const method = String(options.method || 'GET').toUpperCase();
-  const response = await fetch(`${API}${path}`, {
+  const response = await fetch(fullUrl, {
     ...options,
     headers,
     cache: method === 'GET' ? 'no-store' : options.cache
@@ -20,7 +26,7 @@ export async function api(path, options = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 401 && path !== '/auth/login') {
+    if (response.status === 401 && cleanPath !== '/auth/login') {
       try {
         localStorage.removeItem('cch_admin_token');
         localStorage.removeItem('cch_admin_user');
