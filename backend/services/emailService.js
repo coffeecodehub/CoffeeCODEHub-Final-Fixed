@@ -2,6 +2,9 @@ const { Resend } = require('resend');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
+// Official custom domain sender address
+const SENDER_EMAIL = process.env.RESEND_FROM || 'CoffeeCODEHub <info@coffeecodehub.com>';
+
 async function sendLeadEmail(lead) {
   if (!resend) {
     console.error('RESEND_API_KEY is missing on Render');
@@ -20,7 +23,7 @@ async function sendLeadEmail(lead) {
   const adminEmail = process.env.ADMIN_EMAIL || 'your-email@gmail.com';
 
   return await resend.emails.send({
-    from: 'CoffeeCODEHub <onboarding@resend.dev>',
+    from: SENDER_EMAIL,
     to: adminEmail,
     subject: `New CoffeeCODEHub Service Request — ${lead.requestId}`,
     html: `<div style="font-family:Arial;color:#17202a">
@@ -48,7 +51,7 @@ async function sendClientConfirmation(lead) {
   if (!resend) return;
 
   return await resend.emails.send({
-    from: 'CoffeeCODEHub <onboarding@resend.dev>',
+    from: SENDER_EMAIL,
     to: lead.email,
     subject: `CoffeeCODEHub — Request Received (${lead.requestId})`,
     html: `<div style="font-family:Arial">
