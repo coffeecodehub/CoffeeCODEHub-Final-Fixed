@@ -1,38 +1,12 @@
-const nodemailer = require('nodemailer');
-const dns = require('dns');
+const { Resend } = require('resend');
 
-// Force Node.js to prefer IPv4 over IPv6 globally (Render ENETUNREACH fix)
-if (dns.setDefaultResultOrder) {
-  dns.setDefaultResultOrder('ipv4first');
-}
-
-function transporter() {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-
-  if (!user || !pass) return null;
-
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: {
-      user: user,
-      pass: pass
-    },
-    // Custom IPv4-only lookup function to guarantee no IPv6 address is touched
-    lookup: (hostname, options, callback) => {
-      dns.lookup(hostname, { family: 4 }, callback);
-    },
-    connectionTimeout: 20000,
-    greetingTimeout: 20000,
-    socketTimeout: 30000
-  });
-}
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 async function sendLeadEmail(lead) {
-  const t = transporter();
-  if (!t) throw new Error('SMTP is not configured');
+  if (!resend) {
+    console.error('RESEND_API_KEY is missing on Render');
+    throw new Error('Email service not configured');
+  }
 
   const rows = Object.entries(lead.formData || {})
     .map(
@@ -43,9 +17,11 @@ async function sendLeadEmail(lead) {
     )
     .join('');
 
-  return t.sendMail({
-    from: process.env.SMTP_FROM || `"CoffeeCODEHub" <${process.env.SMTP_USER}>`,
-    to: process.env.ADMIN_EMAIL || process.env.SMTP_USER,
+  const adminEmail = process.env.ADMIN_EMAIL || 'your-email@gmail.com';
+
+  return await resend.emails.send({
+    from: 'CoffeeCODEHub <onboarding@resend.dev>',
+    to: adminEmail,
     subject: `New CoffeeCODEHub Service Request — ${lead.requestId}`,
     html: `<div style="font-family:Arial;color:#17202a">
       <h2>New CoffeeCODEHub Service Request</h2>
@@ -69,11 +45,10 @@ async function sendLeadEmail(lead) {
 }
 
 async function sendClientConfirmation(lead) {
-  const t = transporter();
-  if (!t) return;
+  if (!resend) return;
 
-  return t.sendMail({
-    from: process.env.SMTP_FROM || `"CoffeeCODEHub" <${process.env.SMTP_USER}>`,
+  return await resend.emails.send({
+    from: 'CoffeeCODEHub <onboarding@resend.dev>',
     to: lead.email,
     subject: `CoffeeCODEHub — Request Received (${lead.requestId})`,
     html: `<div style="font-family:Arial">
