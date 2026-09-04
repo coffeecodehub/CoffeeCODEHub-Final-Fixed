@@ -2,12 +2,12 @@ const { Resend } = require('resend');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-// Verified domain ke exact spelling ke mutabiq
-const SENDER_EMAIL = process.env.RESEND_FROM || 'CoffeeCODEHub <info@coffecodehub.com>';
+// Verified domain sender
+const SENDER_EMAIL = 'CoffeeCODEHub <info@coffecodehub.com>';
 
 async function sendLeadEmail(lead) {
   if (!resend) {
-    console.error('RESEND_API_KEY is missing on Render');
+    console.error('RESEND_API_KEY is missing on Render!');
     throw new Error('Email service not configured');
   }
 
@@ -20,11 +20,12 @@ async function sendLeadEmail(lead) {
     )
     .join('');
 
-  const adminEmail = process.env.ADMIN_EMAIL || 'your-email@gmail.com';
+  // Priority: NOTIFICATION_EMAIL -> fallback to ADMIN_EMAIL
+  const notifyEmail = process.env.NOTIFICATION_EMAIL || process.env.ADMIN_EMAIL;
 
-  return await resend.emails.send({
+  const result = await resend.emails.send({
     from: SENDER_EMAIL,
-    to: adminEmail,
+    to: notifyEmail,
     subject: `New CoffeeCODEHub Service Request — ${lead.requestId}`,
     html: `<div style="font-family:Arial;color:#17202a">
       <h2>New CoffeeCODEHub Service Request</h2>
@@ -45,12 +46,15 @@ async function sendLeadEmail(lead) {
       <p>Open the admin dashboard to review and update this lead.</p>
     </div>`
   });
+
+  console.log('Resend Admin Notification Result:', JSON.stringify(result));
+  return result;
 }
 
 async function sendClientConfirmation(lead) {
   if (!resend) return;
 
-  return await resend.emails.send({
+  const result = await resend.emails.send({
     from: SENDER_EMAIL,
     to: lead.email,
     subject: `CoffeeCODEHub — Request Received (${lead.requestId})`,
@@ -62,6 +66,9 @@ async function sendClientConfirmation(lead) {
       <p>Thank you,<br/>CoffeeCODEHub</p>
     </div>`
   });
+
+  console.log('Resend Client Confirmation Result:', JSON.stringify(result));
+  return result;
 }
 
 module.exports = { sendLeadEmail, sendClientConfirmation };
