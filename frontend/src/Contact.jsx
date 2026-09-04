@@ -1,24 +1,653 @@
 import { useEffect, useMemo, useState } from 'react';
 import SEO from './components/SEO';
 import BackButton from './components/BackButton';
-import { FiArrowUpRight, FiCheck, FiChevronDown, FiMapPin, FiMail, FiPhone } from 'react-icons/fi';
+import {
+  FiArrowUpRight,
+  FiCheck,
+  FiChevronDown,
+  FiMapPin,
+  FiMail,
+  FiPhone,
+} from 'react-icons/fi';
 import { api } from './lib/api';
 import { useSite } from './context/useSite';
 import { fallbackServices } from './lib/data';
 import SocialLinks from './components/SocialLinks';
 
-export default function Contact(){
- const {site}=useSite(); const [services,setServices]=useState(null);
- const [d,setD]=useState({fullName:'',email:'',phone:'',companyName:'',serviceId:'',otherService:'',estimatedBudget:'',timeline:'',projectDetails:'',customFields:{}});
- const [state,setState]=useState({loading:false,error:'',id:''});
- useEffect(()=>{api('/services?active=true').then(r=>setServices(Array.isArray(r.data)&&r.data.length?r.data:fallbackServices)).catch(()=>setServices(fallbackServices))},[]);
- const selected=useMemo(()=>services?.find(s=>String(s._id)===d.serviceId),[services,d.serviceId]);
- const update=(k,v)=>setD(x=>({...x,[k]:v}));
- const updateCustom=(k,v)=>setD(x=>({...x,customFields:{...x.customFields,[k]:v}}));
- async function submit(e){e.preventDefault();setState({loading:true,error:'',id:''});try{
-   const selectedService=d.serviceId==='other'?d.otherService:(selected?.title||'');
-   const r=await api('/leads',{method:'POST',body:JSON.stringify({clientName:d.fullName,email:d.email,phone:d.phone,companyName:d.companyName,selectedService,selectedServiceId:d.serviceId!=='other'&&/^[0-9a-fA-F]{24}$/.test(d.serviceId)?d.serviceId:undefined,estimatedBudget:d.estimatedBudget,timeline:d.timeline,projectScopeDetails:d.projectDetails,formData:{...d.customFields,contactSource:'contact-page',otherService:d.otherService||undefined}})});
-   setState({loading:false,error:'',id:r.requestId});
- }catch(err){setState({loading:false,error:err.message,id:''})}}
- const mapUrl=site.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address||'Pakistan')}`;
- if(!services)return null; return <><SEO title="Contact CoffeeCODEHub" description="Request web development, custom software, mobile apps, UI/UX, e-commerce, WordPress or other IT services from CoffeeCODEHub." path="/contact"/><main className="pt-20 bg-slate-50 min-h-screen"><div className="max-w-7xl mx-auto px-5 lg:px-8 pt-6"><BackButton/></div><div className="max-w-7xl mx-auto px-5 lg:px-8 py-12 lg:py-20 grid lg:grid-cols-[.85fr_1.15fr] gap-14"><div><p className="text-[#F59E0B] text-xs font-black tracking-[.25em] uppercase">Start a project</p><h1 className="mt-4 text-5xl md:text-6xl font-black tracking-tight">Tell us what you’re building.</h1><p className="mt-6 text-lg leading-8 text-slate-600 max-w-xl">Choose the service that fits your project, tell us what you need, and receive a professional request reference after submission.</p><div className="mt-10 grid sm:grid-cols-2 gap-4"><a href={`mailto:${site.email||'coffeecodehub@gmail.com'}`} className="rounded-2xl bg-white border p-5 hover:border-amber-300 transition"><span className="text-xs uppercase tracking-widest font-black text-slate-400 flex items-center gap-2"><FiMail/> Email</span><p className="text-slate-800 mt-2 font-semibold break-all">{site.email||'coffeecodehub@gmail.com'}</p></a><a href={`tel:${site.phone||'03114909975'}`} className="rounded-2xl bg-white border p-5 hover:border-amber-300 transition"><span className="text-xs uppercase tracking-widest font-black text-slate-400 flex items-center gap-2"><FiPhone/> Phone</span><p className="text-slate-800 mt-2 font-semibold">{site.phone||'0311 4909975'}</p></a><a href={mapUrl} target="_blank" rel="noreferrer" className="sm:col-span-2 rounded-2xl bg-white border p-5 hover:border-amber-300 transition"><span className="text-xs uppercase tracking-widest font-black text-slate-400 flex items-center gap-2"><FiMapPin/> Location</span><p className="text-slate-800 mt-2 font-semibold">{site.address||'Pakistan'} <span className="text-[#b77900]">View on Maps ↗</span></p></a></div><div className="mt-8"><p className="text-xs uppercase tracking-widest font-black text-slate-400">Connect with us</p><SocialLinks socialLinks={site.socialLinks} className="mt-4"/></div></div><div className="bg-white border rounded-[2rem] p-7 md:p-9 shadow-xl">{state.id?<div className="text-center py-12"><div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-3xl"><FiCheck/></div><h2 className="mt-6 text-3xl font-black">Request Received</h2><p className="mt-3 text-slate-600 max-w-md mx-auto">Your request has been received by CoffeeCODEHub. Our team will review the requirements and contact you shortly.</p><div className="mt-6 inline-block bg-slate-950 text-white rounded-xl px-5 py-3 font-bold">Request ID: {state.id}</div><div className="mt-8 text-left max-w-sm mx-auto space-y-3"><p className="flex gap-3 items-center font-bold"><span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">✓</span> Request received</p><p className="flex gap-3 items-center text-slate-500"><span className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center">2</span> Team review</p><p className="flex gap-3 items-center text-slate-500"><span className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center">3</span> Team contacts you</p></div></div>:<form onSubmit={submit} className="space-y-5"><div className="grid md:grid-cols-2 gap-5">{[['fullName','Full Name','text',true],['email','Email Address','email',true],['phone','Phone / WhatsApp','tel',true],['companyName','Company / Business','text',false]].map(([k,l,t,req])=><label key={k} className="block text-sm font-bold text-slate-700">{l}<input required={req} type={t} value={d[k]} onChange={e=>update(k,e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5 outline-none focus:border-[#F59E0B] focus:ring-4 focus:ring-amber-100"/></label>)}</div><label className="block text-sm font-bold text-slate-700">Select a Service<div className="relative mt-2"><select required value={d.serviceId} onChange={e=>update('serviceId',e.target.value)} className="appearance-none w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 pr-10 outline-none focus:border-[#F59E0B]"><option value="">Choose a service</option>{services.map(s=><option key={s._id||s.slug} value={s._id}>{s.title}</option>)}<option value="other">Other / Custom Requirement</option></select><FiChevronDown className="pointer-events-none absolute right-4 top-4"/></div></label>{d.serviceId==='other'&&<label className="block text-sm font-bold">Other Service / Requirement<input required value={d.otherService} onChange={e=>update('otherService',e.target.value)} placeholder="e.g. AI integration, automation, consultation" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5"/></label>}{selected?.formFields?.length>0&&<div className="rounded-2xl bg-slate-50 border p-5 space-y-4"><div><h3 className="font-black">{selected.title} project details</h3><p className="text-xs text-slate-500 mt-1">A few service-specific questions help our team understand your requirements.</p></div>{selected.formFields.map(f=><label key={f.fieldId||f.name} className="block text-sm font-bold">{f.label}{f.required&&<span className="text-red-500"> *</span>}{f.type==='textarea'?<textarea required={!!f.required} rows="4" value={d.customFields[f.name]||''} onChange={e=>updateCustom(f.name,e.target.value)} placeholder={f.placeholder||''} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"/>:f.type==='select'||f.type==='radio'?<select required={!!f.required} value={d.customFields[f.name]||''} onChange={e=>updateCustom(f.name,e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"><option value="">{f.placeholder||'Select an option'}</option>{(f.options||[]).map(o=><option key={o} value={o}>{o}</option>)}</select>:f.type==='multiselect'?<select multiple value={Array.isArray(d.customFields[f.name])?d.customFields[f.name]:[]} onChange={e=>updateCustom(f.name,Array.from(e.target.selectedOptions).map(o=>o.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 h-28">{(f.options||[]).map(o=><option key={o} value={o}>{o}</option>)}</select>:<input required={!!f.required} type={f.type==='budget'?'text':f.type} value={d.customFields[f.name]||''} onChange={e=>updateCustom(f.name,e.target.value)} placeholder={f.placeholder||''} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"/>}</label>)}</div>}<div className="grid md:grid-cols-2 gap-5"><label className="block text-sm font-bold">Estimated Budget<input value={d.estimatedBudget} onChange={e=>update('estimatedBudget',e.target.value)} placeholder="e.g. $1,000–$3,000 (optional)" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5"/></label><label className="block text-sm font-bold">Preferred Timeline<input value={d.timeline} onChange={e=>update('timeline',e.target.value)} placeholder="e.g. 4–6 weeks" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5"/></label></div><label className="block text-sm font-bold">Project Details<textarea required rows="7" value={d.projectDetails} onChange={e=>update('projectDetails',e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5 outline-none focus:border-[#F59E0B]" placeholder="Tell us about your goals, required features, existing website/app, deadline and anything else we should know."/></label>{state.error&&<p className="p-3 rounded-xl bg-red-50 text-red-600">{state.error}</p>}<button disabled={state.loading||!d.serviceId} className="w-full flex justify-center items-center gap-2 rounded-xl bg-[#F59E0B] py-4 font-black disabled:opacity-60">{state.loading?'Sending...':'Submit Service Request'} <FiArrowUpRight/></button></form>}</div></div></main></>}
+export default function Contact() {
+  const { site } = useSite();
+  const [services, setServices] = useState(null);
+
+  const [d, setD] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    companyName: '',
+    serviceId: '',
+    otherService: '',
+    estimatedBudget: '',
+    timeline: '',
+    projectDetails: '',
+    customFields: {},
+  });
+
+  const [state, setState] = useState({
+    loading: false,
+    error: '',
+    id: '',
+  });
+
+  useEffect(() => {
+    api('/services?active=true')
+      .then((r) =>
+        setServices(
+          Array.isArray(r.data) && r.data.length
+            ? r.data
+            : fallbackServices
+        )
+      )
+      .catch(() => setServices(fallbackServices));
+  }, []);
+
+  const selected = useMemo(
+    () => services?.find((s) => String(s._id) === d.serviceId),
+    [services, d.serviceId]
+  );
+
+  const update = (k, v) =>
+    setD((x) => ({
+      ...x,
+      [k]: v,
+    }));
+
+  const updateCustom = (k, v) =>
+    setD((x) => ({
+      ...x,
+      customFields: {
+        ...x.customFields,
+        [k]: v,
+      },
+    }));
+
+  async function submit(e) {
+    e.preventDefault();
+
+    setState({
+      loading: true,
+      error: '',
+      id: '',
+    });
+
+    try {
+      const selectedService =
+        d.serviceId === 'other'
+          ? d.otherService
+          : selected?.title || '';
+
+      const r = await api('/leads', {
+        method: 'POST',
+        body: JSON.stringify({
+          clientName: d.fullName,
+          email: d.email,
+          phone: d.phone,
+          companyName: d.companyName,
+          selectedService,
+          selectedServiceId:
+            d.serviceId !== 'other' &&
+            /^[0-9a-fA-F]{24}$/.test(d.serviceId)
+              ? d.serviceId
+              : undefined,
+          estimatedBudget: d.estimatedBudget,
+          timeline: d.timeline,
+          projectScopeDetails: d.projectDetails,
+          formData: {
+            ...d.customFields,
+            contactSource: 'contact-page',
+            otherService: d.otherService || undefined,
+          },
+        }),
+      });
+
+      setState({
+        loading: false,
+        error: '',
+        id: r.requestId,
+      });
+    } catch (err) {
+      setState({
+        loading: false,
+        error: err.message,
+        id: '',
+      });
+    }
+  }
+
+  const mapUrl =
+    site.mapUrl ||
+    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      site.address || 'Pakistan'
+    )}`;
+
+  const phone = site.phone || '03114909975';
+  const displayPhone = site.phone || '0311 4909975';
+  const email = site.email || 'coffeecodehub@gmail.com';
+
+  if (!services) return null;
+
+  return (
+    <>
+      <SEO
+        title="Contact CoffeeCODEHub"
+        description="Request web development, custom software, mobile apps, UI/UX, e-commerce, WordPress or other IT services from CoffeeCODEHub."
+        path="/contact"
+      />
+
+      <main className="pt-20 bg-slate-50 min-h-screen">
+
+        <div className="max-w-7xl mx-auto px-5 lg:px-8 pt-6">
+          <BackButton />
+        </div>
+
+        <div className="max-w-7xl mx-auto px-5 lg:px-8 py-12 lg:py-20 grid lg:grid-cols-[.85fr_1.15fr] gap-14">
+
+          {/* LEFT SIDE */}
+          <div>
+
+            <p className="text-[#F59E0B] text-xs font-black tracking-[.25em] uppercase">
+              Start a project
+            </p>
+
+            <h1 className="mt-4 text-5xl md:text-6xl font-black tracking-tight">
+              Tell us what you’re building.
+            </h1>
+
+            <p className="mt-6 text-lg leading-8 text-slate-600 max-w-xl">
+              Choose the service that fits your project, tell us what you
+              need, and receive a professional request reference after
+              submission.
+            </p>
+
+            {/* CONTACT INFORMATION */}
+            <div className="mt-10 space-y-5">
+
+              {/* WHATSAPP / PHONE */}
+              <a
+                href={`https://wa.me/${phone.replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center justify-between rounded-[1.5rem] bg-white border border-slate-200 px-5 py-5 shadow-sm hover:shadow-md hover:border-amber-200 transition-all"
+              >
+                <div className="flex items-center gap-5">
+
+                  <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center shrink-0">
+                    <FiPhone className="text-[#F59E0B] text-2xl" />
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium mb-1">
+                      WhatsApp
+                    </p>
+
+                    <p className="text-lg font-bold tracking-wide text-slate-900">
+                      {displayPhone}
+                    </p>
+                  </div>
+
+                </div>
+
+                <FiArrowUpRight className="text-slate-400 text-xl group-hover:text-[#F59E0B] transition" />
+              </a>
+
+              {/* EMAIL */}
+              <a
+                href={`mailto:${email}`}
+                className="group flex items-center justify-between rounded-[1.5rem] bg-white border border-slate-200 px-5 py-5 shadow-sm hover:shadow-md hover:border-amber-200 transition-all"
+              >
+                <div className="flex items-center gap-5">
+
+                  <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center shrink-0">
+                    <FiMail className="text-[#F59E0B] text-2xl" />
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium mb-1">
+                      Email Address
+                    </p>
+
+                    <p className="text-lg font-bold text-slate-900 break-all">
+                      {email}
+                    </p>
+                  </div>
+
+                </div>
+
+                <FiArrowUpRight className="text-slate-400 text-xl group-hover:text-[#F59E0B] transition" />
+              </a>
+
+              {/* LOCATION — KEPT AS REQUESTED */}
+              <a
+                href={mapUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center justify-between rounded-[1.5rem] bg-white border border-slate-200 px-5 py-5 shadow-sm hover:shadow-md hover:border-amber-200 transition-all"
+              >
+                <div className="flex items-center gap-5">
+
+                  <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center shrink-0">
+                    <FiMapPin className="text-[#F59E0B] text-2xl" />
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-400 font-medium mb-1">
+                      Location
+                    </p>
+
+                    <p className="text-lg font-bold text-slate-900">
+                      {site.address || 'Pakistan'}
+                    </p>
+                  </div>
+
+                </div>
+
+                <FiArrowUpRight className="text-slate-400 text-xl group-hover:text-[#F59E0B] transition" />
+              </a>
+
+            </div>
+
+            {/* SOCIAL LINKS */}
+            <div className="mt-8">
+
+              <p className="text-xs uppercase tracking-widest font-black text-slate-400">
+                Connect with us
+              </p>
+
+              <SocialLinks
+                socialLinks={site.socialLinks}
+                className="mt-4"
+              />
+
+            </div>
+
+          </div>
+
+          {/* RIGHT SIDE FORM */}
+          <div className="bg-white border rounded-[2rem] p-7 md:p-9 shadow-xl">
+
+            {state.id ? (
+
+              <div className="text-center py-12">
+
+                <div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-3xl">
+                  <FiCheck />
+                </div>
+
+                <h2 className="mt-6 text-3xl font-black">
+                  Request Received
+                </h2>
+
+                <p className="mt-3 text-slate-600 max-w-md mx-auto">
+                  Your request has been received by CoffeeCODEHub. Our team
+                  will review the requirements and contact you shortly.
+                </p>
+
+                <div className="mt-6 inline-block bg-slate-950 text-white rounded-xl px-5 py-3 font-bold">
+                  Request ID: {state.id}
+                </div>
+
+                <div className="mt-8 text-left max-w-sm mx-auto space-y-3">
+
+                  <p className="flex gap-3 items-center font-bold">
+                    <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                      ✓
+                    </span>
+                    Request received
+                  </p>
+
+                  <p className="flex gap-3 items-center text-slate-500">
+                    <span className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center">
+                      2
+                    </span>
+                    Team review
+                  </p>
+
+                  <p className="flex gap-3 items-center text-slate-500">
+                    <span className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center">
+                      3
+                    </span>
+                    Team contacts you
+                  </p>
+
+                </div>
+
+              </div>
+
+            ) : (
+
+              <form onSubmit={submit} className="space-y-5">
+
+                {/* BASIC INFORMATION */}
+                <div className="grid md:grid-cols-2 gap-5">
+
+                  {[
+                    ['fullName', 'Full Name', 'text', true],
+                    ['email', 'Email Address', 'email', true],
+                    ['phone', 'Phone / WhatsApp', 'tel', true],
+                    ['companyName', 'Company / Business', 'text', false],
+                  ].map(([k, l, t, req]) => (
+
+                    <label
+                      key={k}
+                      className="block text-sm font-bold text-slate-700"
+                    >
+
+                      {l}
+
+                      <input
+                        required={req}
+                        type={t}
+                        value={d[k]}
+                        onChange={(e) =>
+                          update(k, e.target.value)
+                        }
+                        className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5 outline-none focus:border-[#F59E0B] focus:ring-4 focus:ring-amber-100"
+                      />
+
+                    </label>
+
+                  ))}
+
+                </div>
+
+                {/* SERVICE */}
+                <label className="block text-sm font-bold text-slate-700">
+
+                  Select a Service
+
+                  <div className="relative mt-2">
+
+                    <select
+                      required
+                      value={d.serviceId}
+                      onChange={(e) =>
+                        update('serviceId', e.target.value)
+                      }
+                      className="appearance-none w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 pr-10 outline-none focus:border-[#F59E0B]"
+                    >
+
+                      <option value="">
+                        Choose a service
+                      </option>
+
+                      {services.map((s) => (
+                        <option
+                          key={s._id || s.slug}
+                          value={s._id}
+                        >
+                          {s.title}
+                        </option>
+                      ))}
+
+                      <option value="other">
+                        Other / Custom Requirement
+                      </option>
+
+                    </select>
+
+                    <FiChevronDown className="pointer-events-none absolute right-4 top-4" />
+
+                  </div>
+
+                </label>
+
+                {/* OTHER SERVICE */}
+                {d.serviceId === 'other' && (
+
+                  <label className="block text-sm font-bold">
+
+                    Other Service / Requirement
+
+                    <input
+                      required
+                      value={d.otherService}
+                      onChange={(e) =>
+                        update('otherService', e.target.value)
+                      }
+                      placeholder="e.g. AI integration, automation, consultation"
+                      className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5"
+                    />
+
+                  </label>
+
+                )}
+
+                {/* SERVICE-SPECIFIC FIELDS */}
+                {selected?.formFields?.length > 0 && (
+
+                  <div className="rounded-2xl bg-slate-50 border p-5 space-y-4">
+
+                    <div>
+
+                      <h3 className="font-black">
+                        {selected.title} project details
+                      </h3>
+
+                      <p className="text-xs text-slate-500 mt-1">
+                        A few service-specific questions help our team
+                        understand your requirements.
+                      </p>
+
+                    </div>
+
+                    {selected.formFields.map((f) => (
+
+                      <label
+                        key={f.fieldId || f.name}
+                        className="block text-sm font-bold"
+                      >
+
+                        {f.label}
+
+                        {f.required && (
+                          <span className="text-red-500"> *</span>
+                        )}
+
+                        {f.type === 'textarea' ? (
+
+                          <textarea
+                            required={!!f.required}
+                            rows="4"
+                            value={d.customFields[f.name] || ''}
+                            onChange={(e) =>
+                              updateCustom(
+                                f.name,
+                                e.target.value
+                              )
+                            }
+                            placeholder={f.placeholder || ''}
+                            className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"
+                          />
+
+                        ) : f.type === 'select' ||
+                          f.type === 'radio' ? (
+
+                          <select
+                            required={!!f.required}
+                            value={d.customFields[f.name] || ''}
+                            onChange={(e) =>
+                              updateCustom(
+                                f.name,
+                                e.target.value
+                              )
+                            }
+                            className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"
+                          >
+
+                            <option value="">
+                              {f.placeholder ||
+                                'Select an option'}
+                            </option>
+
+                            {(f.options || []).map((o) => (
+                              <option key={o} value={o}>
+                                {o}
+                              </option>
+                            ))}
+
+                          </select>
+
+                        ) : f.type === 'multiselect' ? (
+
+                          <select
+                            multiple
+                            value={
+                              Array.isArray(
+                                d.customFields[f.name]
+                              )
+                                ? d.customFields[f.name]
+                                : []
+                            }
+                            onChange={(e) =>
+                              updateCustom(
+                                f.name,
+                                Array.from(
+                                  e.target.selectedOptions
+                                ).map((o) => o.value)
+                              )
+                            }
+                            className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 h-28"
+                          >
+
+                            {(f.options || []).map((o) => (
+                              <option key={o} value={o}>
+                                {o}
+                              </option>
+                            ))}
+
+                          </select>
+
+                        ) : (
+
+                          <input
+                            required={!!f.required}
+                            type={
+                              f.type === 'budget'
+                                ? 'text'
+                                : f.type
+                            }
+                            value={
+                              d.customFields[f.name] || ''
+                            }
+                            onChange={(e) =>
+                              updateCustom(
+                                f.name,
+                                e.target.value
+                              )
+                            }
+                            placeholder={f.placeholder || ''}
+                            className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"
+                          />
+
+                        )}
+
+                      </label>
+
+                    ))}
+
+                  </div>
+
+                )}
+
+                {/* BUDGET + TIMELINE */}
+                <div className="grid md:grid-cols-2 gap-5">
+
+                  <label className="block text-sm font-bold">
+
+                    Estimated Budget
+
+                    <input
+                      value={d.estimatedBudget}
+                      onChange={(e) =>
+                        update(
+                          'estimatedBudget',
+                          e.target.value
+                        )
+                      }
+                      placeholder="e.g. $1,000–$3,000 (optional)"
+                      className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5"
+                    />
+
+                  </label>
+
+                  <label className="block text-sm font-bold">
+
+                    Preferred Timeline
+
+                    <input
+                      value={d.timeline}
+                      onChange={(e) =>
+                        update('timeline', e.target.value)
+                      }
+                      placeholder="e.g. 4–6 weeks"
+                      className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5"
+                    />
+
+                  </label>
+
+                </div>
+
+                {/* PROJECT DETAILS */}
+                <label className="block text-sm font-bold">
+
+                  Project Details
+
+                  <textarea
+                    required
+                    rows="7"
+                    value={d.projectDetails}
+                    onChange={(e) =>
+                      update(
+                        'projectDetails',
+                        e.target.value
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3.5 outline-none focus:border-[#F59E0B]"
+                    placeholder="Tell us about your goals, required features, existing website/app, deadline and anything else we should know."
+                  />
+
+                </label>
+
+                {/* ERROR */}
+                {state.error && (
+
+                  <p className="p-3 rounded-xl bg-red-50 text-red-600">
+                    {state.error}
+                  </p>
+
+                )}
+
+                {/* SUBMIT */}
+                <button
+                  disabled={state.loading || !d.serviceId}
+                  className="w-full flex justify-center items-center gap-2 rounded-xl bg-[#F59E0B] py-4 font-black disabled:opacity-60"
+                >
+
+                  {state.loading
+                    ? 'Sending...'
+                    : 'Submit Service Request'}
+
+                  <FiArrowUpRight />
+
+                </button>
+
+              </form>
+
+            )}
+
+          </div>
+
+        </div>
+
+      </main>
+    </>
+  );
+}
