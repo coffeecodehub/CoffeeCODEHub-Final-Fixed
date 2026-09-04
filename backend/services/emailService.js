@@ -1,4 +1,10 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns');
+
+// Force Node.js to prefer IPv4 over IPv6 globally (Render ENETUNREACH fix)
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 function transporter() {
   const user = process.env.SMTP_USER;
@@ -6,16 +12,18 @@ function transporter() {
 
   if (!user || !pass) return null;
 
-  // Render network timeout fix: Direct SSL over Port 465 with IPv4 force
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
-    secure: true, // SSL port 465 ke liye true zaroori hai
+    secure: true,
     auth: {
       user: user,
       pass: pass
     },
-    family: 4, // IPv6 unreachable bypass
+    // Custom IPv4-only lookup function to guarantee no IPv6 address is touched
+    lookup: (hostname, options, callback) => {
+      dns.lookup(hostname, { family: 4 }, callback);
+    },
     connectionTimeout: 20000,
     greetingTimeout: 20000,
     socketTimeout: 30000
