@@ -1,37 +1,24 @@
 const nodemailer = require('nodemailer');
 
 function transporter() {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
 
-  // Agar Gmail host set hai ya service gmail hai, to native service use karein
-  const isGmail = (process.env.SMTP_HOST || '').toLowerCase().includes('gmail');
+  if (!user || !pass) return null;
 
-  if (isGmail) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    });
-  }
-
-  // Custom SMTP configuration with IPv4 force
-  const port = Number(process.env.SMTP_PORT || 465);
-  const secure = String(process.env.SMTP_SECURE) === 'true' || port === 465;
-
+  // Render network timeout fix: Direct SSL over Port 465 with IPv4 force
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: port,
-    secure: secure,
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // SSL port 465 ke liye true zaroori hai
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
+      user: user,
+      pass: pass
     },
-    family: 4, // Outbound IPv6 block bypass karne ke liye IPv4 force karta hai
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000
+    family: 4, // IPv6 unreachable bypass
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+    socketTimeout: 30000
   });
 }
 
