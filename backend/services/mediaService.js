@@ -68,4 +68,21 @@ async function uploadBuffer(file, folder = 'coffeecodehub') {
   return { secure_url: `${base}/uploads/${filename}`, public_id: `local/${filename}` };
 }
 
-module.exports = { uploadBuffer };
+async function deleteMedia(publicId) {
+  if (!publicId) return;
+
+  if (hasCloudinary && !String(publicId).startsWith('local/')) {
+    await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+    return;
+  }
+
+  if (String(publicId).startsWith('local/')) {
+    const filename = String(publicId).slice('local/'.length);
+    const filePath = path.join(__dirname, '..', 'uploads', filename);
+    try { await fs.promises.unlink(filePath); } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+    }
+  }
+}
+
+module.exports = { uploadBuffer, deleteMedia };

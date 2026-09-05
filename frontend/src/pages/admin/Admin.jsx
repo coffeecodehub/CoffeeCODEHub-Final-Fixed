@@ -1,5 +1,6 @@
+import { sortTeamMembers } from '../../lib/teamSort';
 import { api, apiBlob } from '../../lib/api';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaXTwitter, FaGripVertical } from 'react-icons/fa6';
 import { mediaUrl } from '../../lib/media';
@@ -34,6 +35,14 @@ const ICONS = [
 ];
 const ICON_MAP = Object.fromEntries(ICONS.map(([id, , Icon]) => [id, Icon]));
 
+// ============================================================
+// TEAM AUTOMATIC ROLE SORTING
+// ============================================================
+
+
+
+
+
 function Login({ onLogin }) {
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [err, setErr] = useState(''), [loading, setLoading] = useState(false);
   async function submit(e) {
@@ -48,42 +57,328 @@ function useAdminData(endpoint) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const applyData = useCallback((responseData) => {
+    const incoming = responseData || [];
+    return endpoint === '/team/admin' ? sortTeamMembers(incoming) : incoming;
+  }, [endpoint]);
+
   useEffect(() => {
     let active = true;
+
     api(endpoint)
-      .then((r) => { if (active) { setData(r.data || []); setLoading(false); } })
-      .catch(() => { if (active) { setData([]); setLoading(false); } });
-    return () => { active = false; };
-  }, [endpoint]);
+      .then((r) => {
+        if (active) {
+          setData(applyData(r.data));
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setData([]);
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [endpoint, applyData]);
 
   const load = async () => {
     setLoading(true);
-    try { const r = await api(endpoint); setData(r.data || []); }
-    catch { setData([]); }
-    finally { setLoading(false); }
+    try {
+      const r = await api(endpoint);
+      setData(applyData(r.data));
+    } catch {
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
   };
+
   return [data, setData, load, loading];
 }
 function Back() { return <Link to="/" className="inline-flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-950"><FiArrowLeft /> Public website</Link>; }
 
-function ImageUpload({ label, value, onChange, multiple = false, folder = 'coffeecodehub' }) {
-  const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  async function upload(e) {
-    const files = Array.from(e.target.files || []); if (!files.length) return;
-    setBusy(true); setError('');
-    try {
-      const urls = [];
-      for (const file of (multiple ? files : files.slice(0, 1))) {
-        const form = new FormData(); form.append('file', file); form.append('folder', folder);
-        const r = await api('/media', { method: 'POST', body: form }); urls.push(r.url);
+function CropModal({ file, onCancel, onDone, aspect = 16 / 9 }) {
+  const imgSrc = useMemo(() => (file ? URL.createObjectURL(file) : ''), [file]);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [crop, setCrop] = useState(null);
+  const [action, setAction] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const imageRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (imgSrc) URL.revokeObjectURL(imgSrc);
+    };
+  }, [imgSrc]);
+
+  const initialiseCrop = useCallback(() => {
+    const img = imageRef.current;
+    if (!img) return;
+
+    const width = img.clientWidth;
+    const height = img.clientHeight;
+    if (!width || !height) return;
+
+    const cropWidth = Math.min(width, height * aspect);
+    const cropHeight = cropWidth / aspect;
+
+    setImageSize({ width, height });
+    setCrop({
+      x: (width - cropWidth) / 2,
+      y: (height - cropHeight) / 2,
+      w: cropWidth,
+      h: cropHeight
+    });
+  }, [aspect]);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    if (!img) return undefined;
+
+    const observer = new ResizeObserver(() => {
+      setImageSize({
+        width: img.clientWidth,
+        height: img.clientHeight
+      });
+    });
+
+    observer.observe(img);
+    return () => observer.disconnect();
+  }, [imgSrc]);
+
+  useEffect(() => {
+    if (!action) return undefined;
+
+    const move = (event) => {
+      setCrop(current => {
+        if (!current) return current;
+
+        const dx = event.clientX - action.startX;
+        const dy = event.clientY - action.startY;
+
+        if (action.type === 'move') {
+          return {
+            ...current,
+            x: Math.max(0, Math.min(imageSize.width - current.w, action.crop.x + dx)),
+            y: Math.max(0, Math.min(imageSize.height - current.h, action.crop.y + dy))
+          };
+        }
+
+        const maxW = Math.min(
+          imageSize.width - current.x,
+          (imageSize.height - current.y) * aspect
+        );
+        const minW = Math.min(80, maxW);
+        const nextW = Math.max(minW, Math.min(maxW, action.crop.w + dx));
+
+        return {
+          ...current,
+          w: nextW,
+          h: nextW / aspect
+        };
+      });
+    };
+
+    const stop = () => setAction(null);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+    };
+  }, [action, imageSize, aspect]);
+
+  function startMove(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!crop) return;
+    setAction({
+      type: 'move',
+      startX: event.clientX,
+      startY: event.clientY,
+      crop: { ...crop }
+    });
+  }
+
+  function startResize(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!crop) return;
+    setAction({
+      type: 'resize',
+      startX: event.clientX,
+      startY: event.clientY,
+      crop: { ...crop }
+    });
+  }
+
+  function resetCrop() {
+    initialiseCrop();
+  }
+
+  function finish() {
+    const img = imageRef.current;
+    if (!img || !crop || busy || !imageSize.width || !imageSize.height) return;
+
+    setBusy(true);
+    const naturalWidth = img.naturalWidth;
+    const naturalHeight = img.naturalHeight;
+    const scaleX = naturalWidth / imageSize.width;
+    const scaleY = naturalHeight / imageSize.height;
+
+    const sx = Math.max(0, Math.round(crop.x * scaleX));
+    const sy = Math.max(0, Math.round(crop.y * scaleY));
+    const sw = Math.min(naturalWidth - sx, Math.max(1, Math.round(crop.w * scaleX)));
+    const sh = Math.min(naturalHeight - sy, Math.max(1, Math.round(crop.h * scaleY)));
+
+    const outW = 1600;
+    const outH = Math.round(outW / aspect);
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setBusy(false);
+      return;
+    }
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
+
+    canvas.toBlob(blob => {
+      if (!blob) {
+        setBusy(false);
+        return;
       }
-      onChange(multiple ? [...(value || []), ...urls] : urls[0]);
-    } catch (err) { setError(err.message); } finally { setBusy(false); e.target.value = ''; }
+      onDone(new File([blob], `cropped-${Date.now()}.webp`, { type: 'image/webp' }));
+    }, 'image/webp', 0.9);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/75 flex items-center justify-center p-4">
+      <div className="w-full max-w-5xl max-h-[94vh] overflow-y-auto bg-white rounded-3xl p-5 md:p-7 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div>
+            <h3 className="text-xl font-black">Adjust & Crop Image</h3>
+            <p className="text-sm text-slate-500 mt-1">
+              Your full original image is shown first. Nothing is auto-zoomed or forced to the top. Move and resize the crop area yourself.
+            </p>
+          </div>
+          <button type="button" onClick={onCancel} className="p-2 rounded-full hover:bg-slate-100" aria-label="Close">
+            <FiX />
+          </button>
+        </div>
+
+        <div className="rounded-2xl border bg-slate-950 p-3 md:p-5 overflow-auto flex items-center justify-center min-h-[280px]">
+          <div className="relative inline-block max-w-full leading-[0] select-none">
+            <img
+              ref={imageRef}
+              src={imgSrc}
+              alt="Original image for cropping"
+              draggable="false"
+              onLoad={initialiseCrop}
+              className="block max-w-full max-h-[62vh] w-auto h-auto rounded-lg"
+            />
+
+            {crop && (
+              <div
+                className="absolute border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.48)] cursor-move"
+                style={{
+                  left: crop.x,
+                  top: crop.y,
+                  width: crop.w,
+                  height: crop.h,
+                  touchAction: 'none'
+                }}
+                onPointerDown={startMove}
+                title="Drag to move crop"
+              >
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="absolute left-1/3 top-0 bottom-0 border-l border-white/40" />
+                  <div className="absolute left-2/3 top-0 bottom-0 border-l border-white/40" />
+                  <div className="absolute top-1/3 left-0 right-0 border-t border-white/40" />
+                  <div className="absolute top-2/3 left-0 right-0 border-t border-white/40" />
+                </div>
+
+                <button
+                  type="button"
+                  aria-label="Resize crop"
+                  onPointerDown={startResize}
+                  className="absolute right-[-7px] bottom-[-7px] w-5 h-5 rounded-full bg-white border-2 border-slate-900 cursor-nwse-resize shadow"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-slate-500">
+            <b>Crop ratio:</b> {Math.round(aspect * 100) / 100} · The original image stays visible; crop only what you choose.
+          </div>
+          <button type="button" onClick={resetCrop} className="px-4 py-2 rounded-xl border text-sm font-bold">
+            Reset Crop
+          </button>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-5">
+          <button type="button" onClick={onCancel} className="border px-5 py-2.5 rounded-xl font-bold">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={busy || !crop}
+            onClick={finish}
+            className="bg-[#F59E0B] px-5 py-2.5 rounded-xl font-black disabled:opacity-60"
+          >
+            {busy ? 'Processing...' : 'Use This Crop'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function ImageUpload({ label, value, onChange, multiple = false, folder = 'coffeecodehub', aspect = 16 / 9, crop = true, previewAspect }) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [cropFile, setCropFile] = useState(null), [queue, setQueue] = useState([]);
+  async function send(file) {
+    setBusy(true); setError('');
+    try { const form = new FormData(); form.append('file', file); form.append('folder', folder); const r = await api('/media', { method: 'POST', body: form }); onChange(multiple ? [...(value || []), r.url] : r.url); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+  function upload(e) {
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    const next = multiple ? files : files.slice(0, 1);
+    setQueue(next.slice(1));
+    if (crop) setCropFile(next[0]); else { send(next[0]); if (next.length > 1) setQueue(next.slice(1)); }
+    e.target.value = '';
+  }
+  async function cropped(file) {
+    setCropFile(null);
+    await send(file);
+    if (queue.length) {
+      const [next, ...rest] = queue;
+      setQueue(rest);
+      if (crop) setCropFile(next);
+      else await send(next);
+    }
   }
   const list = multiple ? (value || []) : (value ? [value] : []);
-  return <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 p-4 bg-slate-50/70"><div className="flex items-center justify-between gap-4"><div><p className="font-black text-sm">{label}</p><p className="text-xs text-slate-500 mt-1">Upload an image in any common format. The server automatically converts it to WebP. Maximum 15 MB per image.</p></div><label className="cursor-pointer inline-flex items-center gap-2 bg-slate-950 text-white px-4 py-2.5 rounded-xl text-sm font-bold"><FiUploadCloud /> {busy ? 'Uploading...' : 'Choose image'}<input type="file" hidden accept="image/*" multiple={multiple} onChange={upload} disabled={busy} /></label></div>{error && <p className="mt-3 text-sm text-red-600">{error}</p>}{list.length > 0 && <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">{list.map((url, i) => <div key={`${url}-${i}`} className="relative rounded-xl overflow-hidden border bg-white"><img src={mediaUrl(url)} alt={`${label} ${i + 1}`} className="w-full aspect-video object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement?.classList.add('bg-red-50'); }} /><button type="button" onClick={() => onChange(multiple ? list.filter((_, j) => j !== i) : '')} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/95 text-red-600 flex items-center justify-center shadow"><FiX /></button></div>)}</div>}</div>;
+  const displayAspect = previewAspect || aspect;
+  return <>
+    {cropFile && <CropModal file={cropFile} aspect={aspect} onCancel={() => { setCropFile(null); setQueue([]); }} onDone={cropped} />}
+    <div className="md:col-span-2 rounded-2xl border border-dashed border-slate-300 p-4 bg-slate-50/70">
+      <div className="flex items-center justify-between gap-4"><div><p className="font-black text-sm">{label}</p><p className="text-xs text-slate-500 mt-1">{crop ? `Choose image${multiple ? 's' : ''} and adjust ${multiple ? 'each one' : 'its framing'} before upload.` : 'Choose an image. The full photo will be preserved without forced cropping.'} Maximum 15 MB.</p></div><label className="cursor-pointer inline-flex items-center gap-2 bg-slate-950 text-white px-4 py-2.5 rounded-xl text-sm font-bold"><FiUploadCloud /> {busy ? 'Uploading...' : 'Choose image'}<input type="file" hidden accept="image/*" multiple={multiple} onChange={upload} disabled={busy || !!cropFile} /></label></div>
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {list.length > 0 && <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">{list.map((url, i) => <div key={`${url}-${i}`} className="relative rounded-xl overflow-hidden border bg-white"><img src={mediaUrl(url)} alt={`${label} ${i + 1}`} className="w-full object-contain bg-slate-100" style={{aspectRatio:String(displayAspect)}} loading="lazy" onError={e => { e.currentTarget.style.display='none'; e.currentTarget.parentElement?.classList.add('bg-red-50'); }} />{crop && <button type="button" onClick={() => onChange(multiple ? list.filter((_, j) => j !== i) : '')} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/95 text-red-600 flex items-center justify-center shadow"><FiX /></button>}{!crop && <button type="button" onClick={() => onChange(multiple ? list.filter((_, j) => j !== i) : '')} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/95 text-red-600 flex items-center justify-center shadow"><FiX /></button>}</div>)}</div>}
+    </div>
+  </>;
 }
-
 function IconPicker({ value, onChange }) {
   const Icon = ICON_MAP[value] || FiCode;
   return <div className="md:col-span-2"><label className="text-sm font-bold text-slate-700">Service Icon</label><div className="mt-2 grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">{ICONS.map(([id, name, I]) => <button type="button" key={id} onClick={() => onChange(id)} className={`p-3 rounded-xl border text-left ${value === id ? 'border-[#F59E0B] bg-amber-50' : 'bg-white hover:border-amber-300'}`}><I className="text-xl text-[#b77900]" /><span className="block text-[11px] font-bold mt-2 leading-4">{name}</span></button>)}</div><div className="mt-3 inline-flex items-center gap-2 text-xs text-slate-500"><span className="w-8 h-8 rounded-lg bg-slate-950 text-[#F59E0B] flex items-center justify-center"><Icon /></span> Selected: <b>{ICONS.find(x => x[0] === value)?.[1] || 'Code / Software'}</b></div></div>;
@@ -111,11 +406,17 @@ function ServiceEditor({ editing, onClose, load }) {
   return <form onSubmit={save} className="mt-7 bg-white border rounded-3xl p-6 md:p-8 grid md:grid-cols-2 gap-5"><div className="md:col-span-2 flex items-start justify-between"><div><p className="text-xs uppercase tracking-widest font-black text-[#b77900]">Service CMS</p><h2 className="text-2xl font-black mt-1">{editing?._id ? 'Edit service' : 'Add a service'}</h2><p className="text-sm text-slate-500 mt-1">Everything here appears on the public Services page when enabled.</p></div><button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-slate-100"><FiX /></button></div><label className="text-sm font-bold">Service Name<input required value={d.title} onChange={e => u('title', e.target.value)} placeholder="e.g. Custom Web Development" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">URL Slug<input required value={d.slug} onChange={e => u('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))} placeholder="custom-web-development" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Category<input value={d.category || ''} onChange={e => u('category', e.target.value)} placeholder="Development, Design, Growth..." className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Display Order<input type="number" value={d.displayOrder ?? 0} onChange={e => u('displayOrder', Number(e.target.value))} placeholder="1" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Short Description<textarea required value={d.shortDescription || ''} onChange={e => u('shortDescription', e.target.value)} placeholder="A concise, client-facing explanation of the service and its business value." rows="3" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Complete Service Description<textarea value={d.fullDescription || ''} onChange={e => u('fullDescription', e.target.value)} placeholder="Explain what you build, who it is for, what problems it solves and what clients receive." rows="7" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><IconPicker value={d.iconIdentifier} onChange={v => u('iconIdentifier', v)} /><ImageUpload label="Service Cover Image" value={d.image} onChange={v => u('image', v)} folder="coffeecodehub/services" /><ListInput label="Technologies" value={d.technologies} onChange={v => u('technologies', v)} placeholder="e.g. React, Node.js, MongoDB" /><ListInput label="Key Features" value={d.keyFeatures} onChange={v => u('keyFeatures', v)} placeholder="e.g. Responsive UI, API integrations" /><ListInput label="Deliverables" value={d.deliverables} onChange={v => u('deliverables', v)} placeholder="e.g. Production deployment, documentation" /><FormFieldBuilder value={d.formFields} onChange={v => u('formFields', v)} /><label className="text-sm font-bold">SEO Title<input value={d.seoTitle || ''} onChange={e => u('seoTitle', e.target.value)} placeholder="Custom Web Development Services | CoffeeCODEHub" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">SEO Meta Description<textarea value={d.metaDescription || ''} onChange={e => u('metaDescription', e.target.value)} placeholder="Describe this service naturally for search users." rows="3" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="flex items-center gap-3 text-sm font-bold"><input type="checkbox" checked={!!d.isActive} onChange={e => u('isActive', e.target.checked)} className="accent-[#F59E0B] w-4 h-4" /> Show service publicly</label><label className="flex items-center gap-3 text-sm font-bold"><input type="checkbox" checked={!!d.isFeatured} onChange={e => u('isFeatured', e.target.checked)} className="accent-[#F59E0B] w-4 h-4" /> Feature on homepage</label>{error && <p className="md:col-span-2 bg-red-50 text-red-600 p-3 rounded-xl">{error}</p>}<div className="md:col-span-2 flex gap-3"><button disabled={saving} className="bg-slate-950 text-white px-6 py-3 rounded-xl font-bold">{saving ? 'Saving...' : 'Save Service'}</button><button type="button" onClick={onClose} className="border px-6 py-3 rounded-xl font-bold">Cancel</button></div></form>;
 }
 
+function makeSafeProjectSlug(value, title) {
+  const raw = String(value || '').trim();
+  if (raw && !/^https?:\/\//i.test(raw)) return raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return String(title || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `project-${Date.now()}`;
+}
+
 function ProjectEditor({ editing, onClose, load }) {
   const [d, setD] = useState(() => ({ title: '', slug: '', category: '', shortDescription: '', fullDescription: '', clientName: '', coverImage: '', gallery: [], liveUrl: '', sourceUrl: '', techStack: [], challenges: '', solution: '', results: '', caseStudy: '', isFeatured: false, isPublished: true, displayOrder: 0, ...editing }));
   const [error, setError] = useState(''), [saving, setSaving] = useState(false); const u = (k, v) => setD(x => ({ ...x, [k]: v }));
-  async function save(e) { e.preventDefault(); setSaving(true); setError(''); try { await api(editing?._id ? `/projects/${editing._id}` : '/projects', { method: editing?._id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(d) }); onClose(); load(); } catch (e) { setError(e.message); } finally { setSaving(false); } }
-  return <form onSubmit={save} className="mt-7 bg-white border rounded-3xl p-6 md:p-8 grid md:grid-cols-2 gap-5"><div className="md:col-span-2 flex items-start justify-between"><div><p className="text-xs uppercase tracking-widest font-black text-[#b77900]">Portfolio CMS</p><h2 className="text-2xl font-black mt-1">{editing?._id ? 'Edit project' : 'Add project'}</h2><p className="text-sm text-slate-500 mt-1">Publish a real case study with images, technology and a live project link.</p></div><button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-slate-100"><FiX /></button></div><label className="text-sm font-bold">Project Name<input required value={d.title} onChange={e => u('title', e.target.value)} placeholder="e.g. E-commerce Platform" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">URL Slug<input required value={d.slug} onChange={e => u('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))} placeholder="ecommerce-platform" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Category<input value={d.category || ''} onChange={e => u('category', e.target.value)} placeholder="Web Development, Mobile, Software..." className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Client Name<input value={d.clientName || ''} onChange={e => u('clientName', e.target.value)} placeholder="Optional client/company name" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Short Description<textarea value={d.shortDescription || ''} onChange={e => u('shortDescription', e.target.value)} placeholder="What was built and why it mattered." rows="3" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Complete Project Description<textarea value={d.fullDescription || ''} onChange={e => u('fullDescription', e.target.value)} placeholder="Explain the client problem, goals and delivered solution." rows="5" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><ImageUpload label="Cover Image" value={d.coverImage} onChange={v => u('coverImage', v)} folder="coffeecodehub/projects" /><ImageUpload label="Project Gallery (multiple images)" value={d.gallery} onChange={v => u('gallery', v)} multiple folder="coffeecodehub/projects/gallery" /><ListInput label="Technology Stack" value={d.techStack} onChange={v => u('techStack', v)} placeholder="e.g. React, Node.js, MongoDB" /><label className="text-sm font-bold">Live Project URL<input type="url" value={d.liveUrl || ''} onChange={e => u('liveUrl', e.target.value)} placeholder="https://client-project.com" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Source / Repository URL<input type="url" value={d.sourceUrl || ''} onChange={e => u('sourceUrl', e.target.value)} placeholder="https://github.com/... (optional)" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Challenges<textarea value={d.challenges || ''} onChange={e => u('challenges', e.target.value)} placeholder="What problem or constraints did the project have?" rows="4" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Solution<textarea value={d.solution || ''} onChange={e => u('solution', e.target.value)} placeholder="How did CoffeeCODEHub solve it?" rows="4" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Results<textarea value={d.results || ''} onChange={e => u('results', e.target.value)} placeholder="Use real outcomes only. Avoid invented metrics." rows="4" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Case Study<textarea value={d.caseStudy || ''} onChange={e => u('caseStudy', e.target.value)} placeholder="Detailed case-study narrative shown on the project page." rows="8" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="flex items-center gap-3 text-sm font-bold"><input type="checkbox" checked={!!d.isFeatured} onChange={e => u('isFeatured', e.target.checked)} className="accent-[#F59E0B] w-4 h-4" /> Featured project</label><label className="flex items-center gap-3 text-sm font-bold"><input type="checkbox" checked={!!d.isPublished} onChange={e => u('isPublished', e.target.checked)} className="accent-[#F59E0B] w-4 h-4" /> Published publicly</label>{error && <p className="md:col-span-2 bg-red-50 text-red-600 p-3 rounded-xl">{error}</p>}<div className="md:col-span-2 flex gap-3"><button disabled={saving} className="bg-slate-950 text-white px-6 py-3 rounded-xl font-bold">{saving ? 'Saving...' : 'Save Project'}</button><button type="button" onClick={onClose} className="border px-6 py-3 rounded-xl font-bold">Cancel</button></div></form>;
+  async function save(e) { e.preventDefault(); setSaving(true); setError(''); try { const payload = { ...d, slug: makeSafeProjectSlug(d.slug, d.title) }; await api(editing?._id ? `/projects/${editing._id}` : '/projects', { method: editing?._id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(payload) }); onClose(); load(); } catch (e) { setError(e.message); } finally { setSaving(false); } }
+  return <form onSubmit={save} className="mt-7 bg-white border rounded-3xl p-6 md:p-8 grid md:grid-cols-2 gap-5"><div className="md:col-span-2 flex items-start justify-between"><div><p className="text-xs uppercase tracking-widest font-black text-[#b77900]">Portfolio CMS</p><h2 className="text-2xl font-black mt-1">{editing?._id ? 'Edit project' : 'Add project'}</h2><p className="text-sm text-slate-500 mt-1">Publish a real case study with images, technology and a live project link.</p></div><button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-slate-100"><FiX /></button></div><label className="text-sm font-bold">Project Name<input required value={d.title} onChange={e => u('title', e.target.value)} placeholder="e.g. E-commerce Platform" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">URL Slug<input required value={d.slug} onChange={e => u('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))} placeholder="ecommerce-platform" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Category<input value={d.category || ''} onChange={e => u('category', e.target.value)} placeholder="Web Development, Mobile, Software..." className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Client Name<input value={d.clientName || ''} onChange={e => u('clientName', e.target.value)} placeholder="Optional client/company name" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Short Description<textarea value={d.shortDescription || ''} onChange={e => u('shortDescription', e.target.value)} placeholder="What was built and why it mattered." rows="3" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Complete Project Description<textarea value={d.fullDescription || ''} onChange={e => u('fullDescription', e.target.value)} placeholder="Explain the client problem, goals and delivered solution." rows="5" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><ImageUpload label="Cover Image" value={d.coverImage} onChange={v => u('coverImage', v)} folder="coffeecodehub/projects" aspect={16 / 9} /><ImageUpload label="Project Gallery (multiple images)" value={d.gallery} onChange={v => u('gallery', v)} multiple folder="coffeecodehub/projects/gallery" aspect={4 / 3} /><ListInput label="Technology Stack" value={d.techStack} onChange={v => u('techStack', v)} placeholder="e.g. React, Node.js, MongoDB" /><label className="text-sm font-bold">Live Project URL<input type="url" value={d.liveUrl || ''} onChange={e => u('liveUrl', e.target.value)} placeholder="https://client-project.com" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Source / Repository URL<input type="url" value={d.sourceUrl || ''} onChange={e => u('sourceUrl', e.target.value)} placeholder="https://github.com/... (optional)" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Challenges<textarea value={d.challenges || ''} onChange={e => u('challenges', e.target.value)} placeholder="What problem or constraints did the project have?" rows="4" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Solution<textarea value={d.solution || ''} onChange={e => u('solution', e.target.value)} placeholder="How did CoffeeCODEHub solve it?" rows="4" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Results<textarea value={d.results || ''} onChange={e => u('results', e.target.value)} placeholder="Use real outcomes only. Avoid invented metrics." rows="4" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Case Study<textarea value={d.caseStudy || ''} onChange={e => u('caseStudy', e.target.value)} placeholder="Detailed case-study narrative shown on the project page." rows="8" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="flex items-center gap-3 text-sm font-bold"><input type="checkbox" checked={!!d.isFeatured} onChange={e => u('isFeatured', e.target.checked)} className="accent-[#F59E0B] w-4 h-4" /> Featured project</label><label className="flex items-center gap-3 text-sm font-bold"><input type="checkbox" checked={!!d.isPublished} onChange={e => u('isPublished', e.target.checked)} className="accent-[#F59E0B] w-4 h-4" /> Published publicly</label>{error && <p className="md:col-span-2 bg-red-50 text-red-600 p-3 rounded-xl">{error}</p>}<div className="md:col-span-2 flex gap-3"><button disabled={saving} className="bg-slate-950 text-white px-6 py-3 rounded-xl font-bold">{saving ? 'Saving...' : 'Save Project'}</button><button type="button" onClick={onClose} className="border px-6 py-3 rounded-xl font-bold">Cancel</button></div></form>;
 }
 
 function SimpleCRUD({ type, endpoint, fields, editor = null }) {
@@ -127,7 +428,74 @@ function SimpleCRUD({ type, endpoint, fields, editor = null }) {
 
 function Dashboard() { const [d, setD] = useState(null); const load = () => api('/dashboard').then(r => setD(r.data)).catch(() => null); useEffect(() => { api('/dashboard').then(r => setD(r.data)).catch(() => null); }, []); return <div><div className="flex items-start justify-between gap-4"><div><Back /><h1 className="mt-5 text-4xl font-black">Dashboard</h1><p className="text-slate-500 mt-2">A live overview of CoffeeCODEHub business activity.</p></div><button onClick={load} className="p-3 rounded-xl bg-white border" title="Refresh"><FiRefreshCw /></button></div><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-8">{[['Leads', d?.leads], ['Active Services', d?.services], ['Published Projects', d?.projects], ['Client Reviews', d?.reviews], ['Published Blogs', d?.blogs], ['Team Members', d?.team]].map(([k, v]) => <div key={k} className="bg-white border rounded-3xl p-6 shadow-sm"><p className="text-slate-500 text-sm">{k}</p><b className="text-4xl mt-3 block">{v ?? '—'}</b></div>)}</div></div>; }
 
-function Reviews() { const [items, , load] = useAdminData('/reviews/admin'); async function del(id) { if (window.confirm('Delete this review permanently?')) { await api(`/reviews/${id}`, { method: 'DELETE', headers: authHeaders() }); load(); } } return <div><Back /><h1 className="mt-5 text-4xl font-black">Client Reviews</h1><p className="text-slate-500 mt-2">Client feedback appears publicly as soon as it is submitted. You only need to delete a review if it is inappropriate or unwanted.</p><div className="mt-7 space-y-4">{items.map(r => <div key={r._id} className="bg-white border rounded-3xl p-6"><div className="flex justify-between gap-4"><div><b>{r.clientName}</b><p className="text-sm text-slate-500">{r.companyName || 'Client'} · <span className="text-[#F59E0B]">{'★'.repeat(r.rating)}</span></p></div><span className="text-xs uppercase font-black px-3 py-1 rounded-full bg-emerald-50 text-emerald-700">Published</span></div><p className="mt-4 text-slate-700 leading-7">{r.feedbackText}</p>{r.clientWebsiteUrl && <a href={r.clientWebsiteUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-[#b77900]">Client website <FiExternalLink /></a>}{r.projectLink && <a href={r.projectLink} target="_blank" rel="noreferrer" className="mt-3 ml-3 inline-flex items-center gap-1 text-sm font-bold text-[#b77900]">Project / work link <FiExternalLink /></a>}{r.proofScreenshots?.length > 0 && <div className="mt-5 flex gap-3">{r.proofScreenshots.map((u, i) => <a key={u} href={mediaUrl(u)} target="_blank" rel="noreferrer"><img src={mediaUrl(u)} alt={`Proof ${i + 1}`} className="w-28 h-20 object-cover rounded-xl border" /></a>)}</div>}<div className="mt-5"><button onClick={() => del(r._id)} className="px-4 py-2 rounded-xl border text-red-600 font-bold inline-flex items-center gap-2"><FiTrash2 /> Delete review</button></div></div>)}{!items.length && <div className="bg-white border rounded-3xl p-10 text-center text-slate-500">No reviews submitted yet.</div>}</div></div>; }
+function Reviews() {
+  const [items, , load] = useAdminData('/reviews/admin');
+  const [message, setMessage] = useState('');
+  const [deleting, setDeleting] = useState(null);
+
+  async function del(review) {
+    if (!window.confirm(`Delete ${review.clientName || 'this review'} permanently?\n\nThis review will be removed from the website.`)) return;
+
+    setDeleting(review._id);
+    setMessage('');
+    try {
+      await api(`/reviews/${review._id}`, { method: 'DELETE', headers: authHeaders() });
+      setMessage('Review deleted successfully.');
+      await load();
+    } catch (e) {
+      setMessage(e.message || 'Unable to delete review.');
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  return <div>
+    <Back />
+    <h1 className="mt-5 text-4xl font-black">Client Reviews</h1>
+    <p className="text-slate-500 mt-2">Client feedback appears publicly as soon as it is submitted. You only need to delete a review if it is inappropriate or unwanted.</p>
+
+    {message && <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-700 font-semibold">{message}</div>}
+
+    <div className="mt-7 space-y-4">
+      {items.map(r => {
+        const proof = r.proofScreenshot || r.proofScreenshots?.[0];
+        return <div key={r._id} className="bg-white border rounded-3xl p-6">
+          <div className="flex justify-between gap-4">
+            <div>
+              <b>{r.clientName}</b>
+              <p className="text-sm text-slate-500">{r.companyName || 'Client'} · <span className="text-[#F59E0B]">{'★'.repeat(r.rating)}</span></p>
+            </div>
+            <span className="text-xs uppercase font-black px-3 py-1 rounded-full bg-emerald-50 text-emerald-700">Published</span>
+          </div>
+
+          <p className="mt-4 text-slate-700 leading-7">{r.feedbackText}</p>
+
+          {r.clientWebsiteUrl && <a href={r.clientWebsiteUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-[#b77900]">Client website <FiExternalLink /></a>}
+          {r.projectLink && <a href={r.projectLink} target="_blank" rel="noreferrer" className="mt-3 ml-3 inline-flex items-center gap-1 text-sm font-bold text-[#b77900]">Project / work link <FiExternalLink /></a>}
+
+          {proof && <div className="mt-5">
+            <p className="text-xs uppercase tracking-widest font-black text-slate-500 mb-2">Project proof image</p>
+            <a href={mediaUrl(proof)} target="_blank" rel="noreferrer" className="inline-block">
+              <img src={mediaUrl(proof)} alt="Project proof" className="w-48 h-32 object-contain bg-slate-100 rounded-xl border" loading="lazy" decoding="async" />
+            </a>
+            <p className="mt-2 text-xs text-emerald-600 font-semibold">✓ Image uploaded</p>
+          </div>}
+
+          <div className="mt-5">
+            <button
+              onClick={() => del(r)}
+              disabled={deleting === r._id}
+              className="px-4 py-2 rounded-xl border text-red-600 font-bold inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              <FiTrash2 /> {deleting === r._id ? 'Deleting...' : 'Delete review'}
+            </button>
+          </div>
+        </div>;
+      })}
+      {!items.length && <div className="bg-white border rounded-3xl p-10 text-center text-slate-500">No reviews submitted yet.</div>}
+    </div>
+  </div>;
+}
 function Leads() {
   const [items, , load] = useAdminData('/leads');
   const [selected, setSelected] = useState(null);
@@ -359,6 +727,23 @@ export default function Admin() {
   return <div className="min-h-screen bg-slate-100 flex"><aside className="hidden md:flex fixed inset-y-0 left-0 w-72 bg-slate-950 text-white p-6 flex-col"><Link to="/" className="flex items-center gap-3"><img src="/coffeecodehub-logo.png" alt="CoffeeCODEHub" className="w-12 h-12 object-contain" /><span className="font-black text-xl">Coffee<span className="text-[#F59E0B]">CODE</span>Hub</span></Link><p className="text-xs text-slate-500 mt-2">Business CMS</p><nav className="mt-8 flex-1 min-h-0 overflow-y-auto pr-2 space-y-1">{nav.map(n => <button key={n} onClick={() => setTab(n)} className={`w-full text-left px-4 py-3 rounded-xl font-semibold ${tab === n ? 'bg-[#F59E0B] text-slate-950' : 'text-slate-300 hover:bg-white/5'}`}>{n}</button>)}</nav><button onClick={() => { localStorage.removeItem('cch_admin_token'); localStorage.removeItem('cch_admin_user'); setAdmin(null); }} className="mt-auto flex items-center gap-2 text-slate-400 px-4 py-3"><FiLogOut /> Logout</button></aside><main className="md:ml-72 flex-1 p-5 lg:p-10"><div className="md:hidden flex overflow-x-auto gap-2 mb-6">{nav.map(n => <button onClick={() => setTab(n)} key={n} className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold ${tab === n ? 'bg-slate-950 text-white' : 'bg-white border'}`}>{n}</button>)}</div>{content}</main></div>;
 }
 
-function TeamEditor({ editing, onClose, load }) { const [d, setD] = useState(() => ({ name: '', designation: '', bio: '', avatarUrl: '', socialLinks: {}, skills: [], displayOrder: 0, isActive: true, ...editing })); const [error, setError] = useState(''); const u = (k, v) => setD(x => ({ ...x, [k]: v })); const social = (k, v) => setD(x => ({ ...x, socialLinks: { ...(x.socialLinks || {}), [k]: v } })); async function save(e) { e.preventDefault(); try { await api(editing?._id ? `/team/${editing._id}` : '/team', { method: editing?._id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(d) }); onClose(); load(); } catch (e) { setError(e.message); } } return <form onSubmit={save} className="mt-7 bg-white border rounded-3xl p-6 grid md:grid-cols-2 gap-5"><div className="md:col-span-2 flex justify-between"><div><p className="text-xs uppercase tracking-widest font-black text-[#b77900]">Team CMS</p><h2 className="text-2xl font-black mt-1">{editing?._id ? 'Edit team member' : 'Add team member'}</h2></div><button type="button" onClick={onClose}><FiX /></button></div><label className="text-sm font-bold">Name<input required value={d.name} onChange={e => u('name', e.target.value)} placeholder="e.g. Ahmed Khan" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Designation<input required value={d.designation} onChange={e => u('designation', e.target.value)} placeholder="Founder & CEO" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Professional Bio<textarea value={d.bio || ''} onChange={e => u('bio', e.target.value)} placeholder="Explain the member's expertise and responsibility." rows="4" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><ImageUpload label="Team Member Photo" value={d.avatarUrl} onChange={v => u('avatarUrl', v)} folder="coffeecodehub/team" /><ListInput label="Skills" value={d.skills} onChange={v => u('skills', v)} placeholder="React, Node.js, UI/UX" /><div className="md:col-span-2 rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">Social Profiles</h3><p className="text-xs text-slate-500 mt-1">Paste profile links. No JSON required.</p><div className="grid md:grid-cols-3 gap-3 mt-4">{socialFields.map(([k,l,I,ph]) => <label key={k} className="text-xs font-bold"><span className="flex items-center gap-2 mb-1">{I && <I className="text-[#b77900]"/>}{l}</span><input type="url" value={d.socialLinks?.[k] || ''} onChange={e => social(k, e.target.value)} placeholder={ph} className="mt-1 w-full border rounded-lg px-3 py-2.5" /></label>)}</div></div><label className="text-sm font-bold">Display Order<input type="number" value={d.displayOrder || 0} onChange={e => u('displayOrder', Number(e.target.value))} placeholder="1" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="flex items-center gap-3 text-sm font-bold"><input type="checkbox" checked={!!d.isActive} onChange={e => u('isActive', e.target.checked)} className="accent-[#F59E0B] w-4 h-4" /> Visible publicly</label>{error && <p className="md:col-span-2 bg-red-50 text-red-600 p-3 rounded-xl">{error}</p>}<div className="md:col-span-2"><button className="bg-slate-950 text-white px-6 py-3 rounded-xl font-bold">Save Team Member</button></div></form>; }
+function TeamEditor({ editing, onClose, load }) { const [d, setD] = useState(() => ({ name: '', designation: '', bio: '', avatarUrl: '', socialLinks: {}, skills: [], displayOrder: 0, isActive: true, ...editing })); const [error, setError] = useState(''); const u = (k, v) => setD(x => ({ ...x, [k]: v })); const social = (k, v) => setD(x => ({ ...x, socialLinks: { ...(x.socialLinks || {}), [k]: v } })); async function save(e) { e.preventDefault(); try { await api(editing?._id ? `/team/${editing._id}` : '/team', { method: editing?._id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(d) }); onClose(); load(); } catch (e) { setError(e.message); } } return <form onSubmit={save} className="mt-7 bg-white border rounded-3xl p-6 grid md:grid-cols-2 gap-5"><div className="md:col-span-2 flex justify-between"><div><p className="text-xs uppercase tracking-widest font-black text-[#b77900]">Team CMS</p><h2 className="text-2xl font-black mt-1">{editing?._id ? 'Edit team member' : 'Add team member'}</h2></div><button type="button" onClick={onClose}><FiX /></button></div><label className="text-sm font-bold">Name<input required value={d.name} onChange={e => u('name', e.target.value)} placeholder="e.g. Ahmed Khan" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Designation
+<select
+  value={d.designation || ''}
+  onChange={e => u('designation', e.target.value)}
+  className="mt-2 w-full border rounded-xl px-4 py-3 bg-white"
+>
+  <option value="">Select designation</option>
+
+  <option value="Founder">Founder</option>
+  <option value="Co-Founder">Co-Founder</option>
+  <option value="Founder & CEO">Founder & CEO</option>
+  <option value="CEO">CEO</option>
+  <option value="Manager">Manager</option>
+  <option value="Other Leadership">Other Leadership</option>
+  <option value="Developer">Developer</option>
+  <option value="Designer">Designer</option>
+  <option value="Other">Other</option>
+</select> </label><label className="md:col-span-2 text-sm font-bold">Professional Bio<textarea value={d.bio || ''} onChange={e => u('bio', e.target.value)} placeholder="Explain the member's expertise and responsibility." rows="4" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><ImageUpload label="Team Member Photo" value={d.avatarUrl} onChange={v => u('avatarUrl', v)} folder="coffeecodehub/team" aspect={4 / 5} crop={true} previewAspect={4 / 5} /><ListInput label="Skills" value={d.skills} onChange={v => u('skills', v)} placeholder="React, Node.js, UI/UX" /><div className="md:col-span-2 rounded-2xl border bg-slate-50 p-5"><h3 className="font-black">Social Profiles</h3><p className="text-xs text-slate-500 mt-1">Paste profile links. No JSON required.</p><div className="grid md:grid-cols-3 gap-3 mt-4">{socialFields.map(([k,l,I,ph]) => <label key={k} className="text-xs font-bold"><span className="flex items-center gap-2 mb-1">{I && <I className="text-[#b77900]"/>}{l}</span><input type="url" value={d.socialLinks?.[k] || ''} onChange={e => social(k, e.target.value)} placeholder={ph} className="mt-1 w-full border rounded-lg px-3 py-2.5" /></label>)}</div></div><label className="text-sm font-bold">Display Order<input type="number" value={d.displayOrder || 0} onChange={e => u('displayOrder', Number(e.target.value))} placeholder="1" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="flex items-center gap-3 text-sm font-bold"><input type="checkbox" checked={!!d.isActive} onChange={e => u('isActive', e.target.checked)} className="accent-[#F59E0B] w-4 h-4" /> Visible publicly</label>{error && <p className="md:col-span-2 bg-red-50 text-red-600 p-3 rounded-xl">{error}</p>}<div className="md:col-span-2"><button className="bg-slate-950 text-white px-6 py-3 rounded-xl font-bold">Save Team Member</button></div></form>; }
 
 function BlogEditor({ editing, onClose, load }) { const [d, setD] = useState(() => ({ title: '', slug: '', excerpt: '', content: '', coverImage: '', category: '', author: 'CoffeeCODEHub', tags: [], status: 'draft', ...editing })); const [error, setError] = useState(''); const u = (k, v) => setD(x => ({ ...x, [k]: v })); async function save(e) { e.preventDefault(); try { await api(editing?._id ? `/blogs/${editing._id}` : '/blogs', { method: editing?._id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(d) }); onClose(); load(); } catch (e) { setError(e.message); } } return <form onSubmit={save} className="mt-7 bg-white border rounded-3xl p-6 grid md:grid-cols-2 gap-5"><div className="md:col-span-2 flex justify-between"><div><p className="text-xs uppercase tracking-widest font-black text-[#b77900]">Blog CMS</p><h2 className="text-2xl font-black mt-1">{editing?._id ? 'Edit blog' : 'Create blog'}</h2></div><button type="button" onClick={onClose}><FiX /></button></div><label className="text-sm font-bold">Title<input required value={d.title} onChange={e => u('title', e.target.value)} placeholder="How to choose a web development company" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Slug<input required value={d.slug} onChange={e => u('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))} placeholder="choose-web-development-company" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="md:col-span-2 text-sm font-bold">Excerpt<textarea value={d.excerpt || ''} onChange={e => u('excerpt', e.target.value)} placeholder="A useful summary for search and blog cards." rows="3" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><ImageUpload label="Blog Cover Image" value={d.coverImage} onChange={v => u('coverImage', v)} folder="coffeecodehub/blogs" /><label className="text-sm font-bold">Category<input value={d.category || ''} onChange={e => u('category', e.target.value)} placeholder="Web Development / SEO / Business" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Author<input value={d.author || ''} onChange={e => u('author', e.target.value)} placeholder="CoffeeCODEHub" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><ListInput label="Tags" value={d.tags} onChange={v => u('tags', v)} placeholder="React, SEO, Business" /><label className="md:col-span-2 text-sm font-bold">Article Content<textarea required value={d.content || ''} onChange={e => u('content', e.target.value)} placeholder="Write genuinely useful content for your audience. Avoid keyword stuffing." rows="14" className="mt-2 w-full border rounded-xl px-4 py-3" /></label><label className="text-sm font-bold">Status<select value={d.status || 'draft'} onChange={e => u('status', e.target.value)} className="mt-2 w-full border rounded-xl px-4 py-3"><option value="draft">Draft</option><option value="published">Published</option></select></label>{error && <p className="md:col-span-2 bg-red-50 text-red-600 p-3 rounded-xl">{error}</p>}<div className="md:col-span-2"><button className="bg-slate-950 text-white px-6 py-3 rounded-xl font-bold">Save Blog</button></div></form>; }

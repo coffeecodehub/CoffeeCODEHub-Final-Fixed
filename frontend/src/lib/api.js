@@ -57,10 +57,18 @@ export async function api(path, options = {}) {
   const clean = cleanPath(path);
   const method = String(options.method || 'GET').toUpperCase();
 
+  const forceFresh =
+    clean === '/projects' ||
+    clean.startsWith('/projects/') ||
+    clean === '/blogs' ||
+    clean.startsWith('/blogs/') ||
+    clean.includes('/admin') ||
+    method !== 'GET';
+
   const response = await fetch(`${API}${clean}`, {
     ...options,
     headers: buildHeaders(options),
-    cache: method === 'GET' ? 'no-store' : options.cache,
+    cache: options.cache || (forceFresh ? 'no-store' : (method === 'GET' ? 'default' : undefined)),
   });
 
   const data = await response.json().catch(() => ({}));
@@ -83,10 +91,18 @@ export async function apiBlob(path, options = {}) {
   const clean = cleanPath(path);
   const method = String(options.method || 'GET').toUpperCase();
 
+  const forceFresh =
+    clean === '/projects' ||
+    clean.startsWith('/projects/') ||
+    clean === '/blogs' ||
+    clean.startsWith('/blogs/') ||
+    clean.includes('/admin') ||
+    method !== 'GET';
+
   const response = await fetch(`${API}${clean}`, {
     ...options,
     headers: buildHeaders(options),
-    cache: method === 'GET' ? 'no-store' : options.cache,
+    cache: options.cache || (forceFresh ? 'no-store' : (method === 'GET' ? 'default' : undefined)),
   });
 
   if (!response.ok) {
@@ -110,3 +126,6 @@ export async function apiBlob(path, options = {}) {
 }
 
 export { getStoredToken };
+
+// Default export taake Review.jsx mein 'import api from ...' chale
+export default api;

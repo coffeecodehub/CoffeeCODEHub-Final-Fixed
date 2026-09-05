@@ -65,7 +65,22 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 app.use('/api', (req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  // Public GET responses can be reused briefly by the browser/CDN.
+  // Admin/authenticated requests and mutations must always be fresh.
+  const isPublicGet = req.method === 'GET' &&
+    !req.headers.authorization &&
+    !req.path.startsWith('/auth') &&
+    !req.path.includes('/admin') &&
+    !req.path.startsWith('/dashboard') &&
+    !req.path.startsWith('/reviews');
+
+  if (isPublicGet) {
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+  } else {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+  }
+
+  res.setHeader('Vary', 'Origin, Authorization');
   next();
 });
 
