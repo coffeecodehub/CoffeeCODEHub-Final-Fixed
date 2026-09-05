@@ -1,10 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { FiArrowRight, FiExternalLink, FiStar, FiUploadCloud, FiX, FiCheck } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
+import { FiArrowLeft, FiExternalLink, FiStar, FiUploadCloud, FiX, FiCheck } from 'react-icons/fi';
 import { api } from './lib/api';
 import { mediaUrl } from './lib/media';
 
 function Review() {
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
     clientName: '',
     companyName: '',
@@ -64,7 +66,6 @@ function Review() {
     };
   }, []);
 
-  // Total Rating calculation out of 5
   const ratingStats = useMemo(() => {
     if (!reviews.length) return { average: '5.0', count: 0 };
     const total = reviews.reduce((acc, curr) => acc + Number(curr.rating || 5), 0);
@@ -151,7 +152,19 @@ function Review() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-slate-50 pt-24 pb-16 px-4 sm:px-6 lg:px-8">
+      {/* TOP HEADER - SIRF BACK BUTTON */}
+      <div className="mx-auto max-w-5xl mb-8 flex items-center">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs sm:text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950 active:scale-95"
+        >
+          <FiArrowLeft className="h-4 w-4" />
+          Back
+        </button>
+      </div>
+
       {/* FORM / SUCCESS CONTAINER */}
       <section className="mx-auto max-w-2xl">
         <div className="rounded-[36px] border border-slate-300 bg-white p-8 sm:p-12 shadow-sm">
@@ -331,7 +344,7 @@ function Review() {
         </div>
       </section>
 
-      {/* ALL REVIEWS */}
+      {/* ALL REVIEWS SECTION */}
       <section className="mx-auto max-w-7xl pt-20 pb-16">
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -339,7 +352,7 @@ function Review() {
               All Reviews
             </h2>
 
-            {/* Total Rating Function out of 5 */}
+            {/* Total Rating out of 5 */}
             <div className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3.5 py-1 shadow-sm">
               <div className="flex text-amber-500">
                 {[1, 2, 3, 4, 5].map((i) => (
@@ -355,12 +368,13 @@ function Review() {
             </div>
           </div>
 
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-slate-100"
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-slate-100 active:scale-95"
           >
-            Back to Home <FiArrowRight />
-          </Link>
+           <FiArrowLeft /> Back 
+          </button>
         </div>
 
         {loadingReviews ? (
