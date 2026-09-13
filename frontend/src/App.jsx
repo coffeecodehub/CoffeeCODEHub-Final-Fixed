@@ -1,13 +1,15 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 
-// Global static components jo har page par chahiye
 import Navbar from './Navbar';
 import Footer from './Footer';
 import ScrollToTop from './ScrollToTop';
 import WhatsappButton from './WhatsappButton';
 
-// Dynamic lazy imports (sirf zaroorat par download honge)
+// Admin panel ko DIRECT import rakhein taake route chunk fail na ho
+import Admin from './pages/admin/Admin';
+
+// Baqi public pages lazy hi rahenge (in se speed fast rahegi)
 const Home = lazy(() => import('./Home'));
 const About = lazy(() => import('./About'));
 const Services = lazy(() => import('./Services'));
@@ -19,9 +21,7 @@ const Blog = lazy(() => import('./Blog'));
 const BlogDetail = lazy(() => import('./BlogDetail'));
 const Team = lazy(() => import('./Team'));
 const Review = lazy(() => import('./Review'));
-const Admin = lazy(() => import('./pages/admin/Admin'));
 
-// Lightweight placeholder loader jab tak koi naya page download ho raha ho
 function PageLoader() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
