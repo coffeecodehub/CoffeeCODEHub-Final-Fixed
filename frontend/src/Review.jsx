@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiExternalLink, FiStar, FiUploadCloud, FiX, FiCheck } from 'react-icons/fi';
+import { FiArrowLeft, FiExternalLink, FiStar, FiUploadCloud, FiX, FiCheck, FiTrash2 } from 'react-icons/fi';
 import { api } from './lib/api';
 import { mediaUrl } from './lib/media';
 
@@ -84,13 +84,26 @@ function Review() {
   };
 
   const handleFiles = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 2) {
+    const selectedFiles = Array.from(e.target.files || []);
+
+    if (proofScreenshots.length + selectedFiles.length > 2) {
       setError('You can upload a maximum of 2 images.');
       return;
     }
-    setProofScreenshots(files);
+
+    const isTooLarge = selectedFiles.some((f) => f.size > 10 * 1024 * 1024);
+    if (isTooLarge) {
+      setError('Each image must be under 10MB.');
+      return;
+    }
+
+    setProofScreenshots((prev) => [...prev, ...selectedFiles].slice(0, 2));
     setError('');
+    e.target.value = '';
+  };
+
+  const handleRemoveImage = (indexToRemove) => {
+    setProofScreenshots((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
   const handleSubmit = async (e) => {
@@ -109,29 +122,38 @@ function Review() {
 
     try {
       setSubmitting(true);
-      const data = new FormData();
 
-      data.append('clientName', form.clientName.trim());
-      data.append('name', form.clientName.trim());
-      data.append('companyName', form.companyName.trim());
-      data.append('clientWebsiteUrl', form.clientWebsiteUrl.trim());
-      data.append('projectLink', form.projectLink.trim());
-      data.append('rating', String(form.rating));
-      
-      data.append('feedbackText', form.feedbackText.trim());
-      data.append('comment', form.feedbackText.trim());
-      data.append('feedback', form.feedbackText.trim());
-      data.append('review', form.feedbackText.trim());
+      if (proofScreenshots.length === 0) {
+        await api('/reviews', {
+          method: 'POST',
+          body: JSON.stringify({
+            clientName: form.clientName.trim(),
+            companyName: form.companyName.trim(),
+            clientWebsiteUrl: form.clientWebsiteUrl.trim(),
+            projectLink: form.projectLink.trim(),
+            rating: Number(form.rating),
+            feedbackText: form.feedbackText.trim(),
+          }),
+        });
+      } else {
+        const data = new FormData();
+        data.append('clientName', form.clientName.trim());
+        if (form.companyName.trim()) data.append('companyName', form.companyName.trim());
+        if (form.clientWebsiteUrl.trim()) data.append('clientWebsiteUrl', form.clientWebsiteUrl.trim());
+        if (form.projectLink.trim()) data.append('projectLink', form.projectLink.trim());
+        data.append('rating', String(form.rating));
+        data.append('feedbackText', form.feedbackText.trim());
 
-      proofScreenshots.forEach((file) => {
-        data.append('proofScreenshot', file);
-        data.append('proofScreenshots', file);
-      });
+        // Multer single/standard field: 'proofScreenshot' (bina 's' ke)
+        proofScreenshots.forEach((file) => {
+          data.append('proofScreenshot', file);
+        });
 
-      await api('/reviews', {
-        method: 'POST',
-        body: data,
-      });
+        await api('/reviews', {
+          method: 'POST',
+          body: data,
+        });
+      }
 
       setForm({
         clientName: '',
@@ -145,7 +167,7 @@ function Review() {
       setSubmitted(true);
       await fetchReviews();
     } catch (err) {
-      setError(err?.message || 'Unable to submit review. Please check all fields.');
+      setError(err?.message || 'Unable to submit review. Please verify all details.');
     } finally {
       setSubmitting(false);
     }
@@ -153,7 +175,7 @@ function Review() {
 
   return (
     <main className="min-h-screen bg-slate-50 pt-24 pb-16 px-4 sm:px-6 lg:px-8">
-      {/* TOP HEADER - SIRF BACK BUTTON */}
+      {/* HEADER BACK BUTTON */}
       <div className="mx-auto max-w-5xl mb-8 flex items-center">
         <button
           type="button"
@@ -165,7 +187,7 @@ function Review() {
         </button>
       </div>
 
-      {/* FORM / SUCCESS CONTAINER */}
+      {/* FORM & SUBMIT CONTAINER */}
       <section className="mx-auto max-w-2xl">
         <div className="rounded-[36px] border border-slate-300 bg-white p-8 sm:p-12 shadow-sm">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-[#d97706] mb-2">
@@ -175,10 +197,9 @@ function Review() {
             Share your CoffeeCODEHub experience.
           </h1>
           <p className="mt-3 text-xs sm:text-sm leading-relaxed text-slate-500">
-            Tell future clients what we built for you. Your company website and the link to the website, app, video, repository or any other delivered work are optional.
+            Tell future clients what we built for you. Your company website and the link to the delivered work are optional.
           </p>
 
-          {/* SUCCESS SCREEN */}
           {submitted ? (
             <div className="mt-8 rounded-3xl border border-emerald-200/80 bg-[#ecfdf5] p-6 sm:p-8 transition-all duration-300">
               <div className="flex items-center gap-3.5 mb-3">
@@ -210,11 +231,10 @@ function Review() {
               )}
 
               <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-                {/* ROW 1: Your Name & Company */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-bold text-slate-900 mb-1.5">
-                      Your Name
+                      Your Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -241,7 +261,6 @@ function Review() {
                   </div>
                 </div>
 
-                {/* ROW 2: Your Website & Delivered Work Link */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-bold text-slate-900 mb-1.5">
@@ -266,13 +285,12 @@ function Review() {
                       name="projectLink"
                       value={form.projectLink}
                       onChange={handleChange}
-                      placeholder="Website, app, YouTube, Drive, GitHub, etc."
+                      placeholder="Website, app, GitHub, etc."
                       className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                     />
                   </div>
                 </div>
 
-                {/* RATING */}
                 <div>
                   <label className="block text-xs font-bold text-slate-900 mb-1.5">
                     Your Rating
@@ -295,10 +313,9 @@ function Review() {
                   </div>
                 </div>
 
-                {/* YOUR FEEDBACK */}
                 <div>
                   <label className="block text-xs font-bold text-slate-900 mb-1.5">
-                    Your Feedback
+                    Your Feedback <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     name="feedbackText"
@@ -310,27 +327,61 @@ function Review() {
                   />
                 </div>
 
-                {/* PROJECT PROOF UPLOAD */}
+                {/* FILE UPLOAD WITH PREVIEWS AND DELETE */}
                 <div>
                   <label className="block text-xs font-bold text-slate-900 mb-1.5">
                     Project Proof <span className="text-slate-400 font-normal">(optional, up to 2 images)</span>
                   </label>
-                  <div className="relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-white p-6 text-center transition hover:bg-slate-50">
-                    <FiUploadCloud className="h-7 w-7 text-amber-500 mb-2" />
-                    <p className="text-[11px] sm:text-xs text-slate-500 max-w-sm mb-3">
-                      Upload screenshots of the website, app, dashboard or other work we delivered. Any image format is accepted.
-                    </p>
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      onChange={handleFiles}
-                      className="text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-slate-700 cursor-pointer"
-                    />
-                  </div>
+
+                  {proofScreenshots.length < 2 && (
+                    <div className="relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-white p-6 text-center transition hover:bg-slate-50 mb-3">
+                      <FiUploadCloud className="h-7 w-7 text-amber-500 mb-2" />
+                      <p className="text-[11px] sm:text-xs text-slate-500 max-w-sm mb-3">
+                        Upload screenshots (PNG, JPG, WEBP, etc.). ({2 - proofScreenshots.length} remaining)
+                      </p>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.svg,.heic"
+                        onChange={handleFiles}
+                        className="text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-slate-700 cursor-pointer"
+                      />
+                    </div>
+                  )}
+
+                  {proofScreenshots.length > 0 && (
+                    <div className="flex flex-wrap gap-4 pt-2">
+                      {proofScreenshots.map((file, idx) => {
+                        const previewUrl = URL.createObjectURL(file);
+                        return (
+                          <div
+                            key={idx}
+                            className="relative group w-24 h-24 sm:w-28 sm:h-28 rounded-2xl border border-slate-200 overflow-hidden bg-slate-100 shadow-sm"
+                          >
+                            <img
+                              src={previewUrl}
+                              alt={`Upload preview ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                              onLoad={() => URL.revokeObjectURL(previewUrl)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(idx)}
+                              title="Delete image"
+                              className="absolute top-1.5 right-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 shadow-md transition transform active:scale-90 cursor-pointer"
+                            >
+                              <FiTrash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <div className="absolute bottom-0 inset-x-0 bg-black/60 px-1 py-0.5 text-[9px] text-white text-center truncate">
+                              {file.name}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                {/* SUBMIT BUTTON */}
                 <button
                   type="submit"
                   disabled={submitting}
@@ -344,7 +395,7 @@ function Review() {
         </div>
       </section>
 
-      {/* ALL REVIEWS SECTION */}
+      {/* REVIEWS GRID */}
       <section className="mx-auto max-w-7xl pt-20 pb-16">
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -352,7 +403,6 @@ function Review() {
               All Reviews
             </h2>
 
-            {/* Total Rating out of 5 */}
             <div className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3.5 py-1 shadow-sm">
               <div className="flex text-amber-500">
                 {[1, 2, 3, 4, 5].map((i) => (
@@ -373,7 +423,7 @@ function Review() {
             onClick={() => navigate(-1)}
             className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-slate-100 active:scale-95"
           >
-           <FiArrowLeft /> Back 
+            <FiArrowLeft /> Back 
           </button>
         </div>
 
@@ -405,29 +455,25 @@ function Review() {
                   className="flex min-h-[220px] flex-col justify-between rounded-[28px] border border-slate-300 bg-white p-7 shadow-sm transition hover:shadow-md"
                 >
                   <div>
-                    {/* STARS */}
                     <div className="text-[#F59E0B] tracking-widest text-sm mb-3">
                       {'★'.repeat(Number(r.rating || 5))}
                     </div>
 
-                    {/* REVIEW TEXT */}
                     <p className="text-sm font-normal leading-relaxed text-slate-800">
                       “{feedback}”
                     </p>
 
-                    {/* PROOF LINK */}
                     {clientProof && (
                       <button
                         type="button"
                         onClick={() => setProofModal(mediaUrl(clientProof))}
-                        className="mt-4 text-xs font-bold text-[#b77900] hover:underline inline-block text-left"
+                        className="mt-4 text-xs font-bold text-[#b77900] hover:underline inline-block text-left cursor-pointer"
                       >
                         View project proof ↗
                       </button>
                     )}
                   </div>
 
-                  {/* BOTTOM AUTHOR & PROJECT LINK */}
                   <div className="mt-8 flex items-end justify-between border-t border-slate-100 pt-4 gap-2">
                     <div>
                       <h4 className="text-sm font-black text-slate-950">
@@ -468,7 +514,7 @@ function Review() {
         )}
       </section>
 
-      {/* PROOF PREVIEW MODAL */}
+      {/* PROOF MODAL */}
       {proofModal && (
         <div
           className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-sm p-5 flex items-center justify-center"
@@ -476,7 +522,7 @@ function Review() {
         >
           <div className="relative max-w-5xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             <button
-              className="absolute -right-3 -top-3 z-10 w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg"
+              className="absolute -right-3 -top-3 z-10 w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg cursor-pointer"
               onClick={() => setProofModal(null)}
             >
               <FiX />
